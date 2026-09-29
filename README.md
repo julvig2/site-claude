@@ -10,9 +10,9 @@ Il n'y a rien à installer : ce sont juste des fichiers HTML, CSS et JavaScript.
 | `index.html` | Accueil : la dernière rediff, les rediffs récentes, un aperçu du reste |
 | `redifs.html` | Toutes les rediffs, avec une recherche et un filtre par catégorie |
 | `video.html?id=...` | Le lecteur d'une rediff, avec des suggestions en dessous |
-| `autres.html` | « Le reste » : clips, projets, planning… |
+| `autres.html` | « Info » : planning, setup, clips… (modifiable depuis l'espace admin) |
 | `a-propos.html` | Présentation et liens vers les réseaux |
-| `admin.html` | Espace admin : connexion avec Twitch pour publier, modifier ou supprimer des rediffs |
+| `admin.html` | Espace admin : connexion avec Twitch pour gérer les rediffs et les cartes Info |
 | `soutenir.html` | Page de dons avec le panneau Ko-fi intégré (carte bancaire ou PayPal) |
 
 ## Modifier le contenu
@@ -23,7 +23,7 @@ Il n'y a rien à installer : ce sont juste des fichiers HTML, CSS et JavaScript.
 - ton lien de dons (bouton « Soutenir ») et ton invitation Discord (bloc « La commu » de l'accueil) ;
 - tes réseaux sociaux ;
 - la liste des rediffs ;
-- la section « Le reste » ;
+- les cartes « Info » par défaut (ensuite, elles se modifient depuis l'espace admin) ;
 - le texte de la page « À propos ».
 
 ### Ajouter une rediff

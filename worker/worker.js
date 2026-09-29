@@ -13,11 +13,16 @@
  *   POST   /redifs          ajoute une rediff (admin)
  *   PUT    /redifs/:id      modifie une rediff (admin)
  *   DELETE /redifs/:id      supprime une rediff (admin)
+ *   GET    /infos           cartes de la section Info (null si jamais modifiées)
+ *   PUT    /infos           remplace toutes les cartes Info (admin)
  */
 
 const CLE = "redifs";
 const CHAMPS = ["titre", "date", "duree", "categorie", "source", "video", "description"];
 const LIMITES = { titre: 200, date: 10, duree: 20, categorie: 60, source: 10, video: 40, description: 5000 };
+
+const LIMITES_INFO = { titre: 120, type: 30, description: 1000, lien: 500 };
+const MAX_INFOS = 50;
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -77,6 +82,27 @@ function nettoyer(entree) {
   return { redif: r };
 }
 
+// Nettoie et valide la liste des cartes Info.
+function nettoyerInfos(entree) {
+  if (!Array.isArray(entree)) return { erreur: "Liste invalide." };
+  if (entree.length > MAX_INFOS) return { erreur: `${MAX_INFOS} cartes maximum.` };
+  const infos = [];
+  for (const item of entree) {
+    const r = {};
+    for (const champ of Object.keys(LIMITES_INFO)) {
+      const v = item?.[champ];
+      r[champ] = typeof v === "string" ? v.trim().slice(0, LIMITES_INFO[champ]) : "";
+    }
+    if (!r.titre) return { erreur: "Chaque carte doit avoir un titre." };
+    // Seuls les vrais liens web sont acceptés (pas de "javascript:" etc.)
+    if (r.lien && !/^https?:\/\/[^\s]+$/i.test(r.lien)) {
+      return { erreur: `Lien invalide pour « ${r.titre} » : il doit commencer par https://` };
+    }
+    infos.push(r);
+  }
+  return { infos };
+}
+
 function nouvelId(titre) {
   const slug = titre
     .toLowerCase()
@@ -100,6 +126,10 @@ export default {
         return json(await lireRedifs(env), 200, { "Cache-Control": "no-store" });
       }
 
+      if (requete.method === "GET" && ressource === "infos" && !id) {
+        return json(await env.REDIFS.get("infos", "json"), 200, { "Cache-Control": "no-store" });
+      }
+
       const moi = await utilisateur(requete, env);
 
       if (requete.method === "GET" && ressource === "moi") {
@@ -117,6 +147,13 @@ export default {
         if (!rep.ok) return erreur("Vidéo introuvable ou privée.", 404);
         const infos = await rep.json();
         return json({ titre: infos.title || "" });
+      }
+
+      if (requete.method === "PUT" && ressource === "infos" && !id) {
+        const { infos, erreur: msg } = nettoyerInfos(await requete.json());
+        if (msg) return erreur(msg, 400);
+        await env.REDIFS.put("infos", JSON.stringify(infos));
+        return json(infos);
       }
 
       if (ressource === "redifs") {

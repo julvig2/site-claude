@@ -46,7 +46,8 @@ const SITE = {
   //   categorie: "Just Chatting", source: "youtube", video: "ID_YOUTUBE", description: "..." },
   redifs: [],
 
-  // Section "Le reste" : clips, projets, montages, setup... tout ce que tu veux.
+  // Section "Info" : cartes par défaut. Dès que tu les modifies depuis l'espace admin,
+  // ce sont celles de l'espace admin qui s'affichent à la place de celles-ci.
   autres: [
     {
       titre: "Meilleurs moments de septembre",
@@ -58,7 +59,7 @@ const SITE = {
       titre: "Mon setup",
       type: "Page",
       description: "Le matos que j'utilise pour streamer.",
-      lien: "#setup",
+      lien: "",
     },
     {
       titre: "Planning des streams",

@@ -154,11 +154,33 @@ async function afficherAdmin(avertissement = "") {
       </div>
     </form>
     <h2>Rediffs publiées</h2>
-    <div id="liste-admin"></div>`;
+    <div id="liste-admin"></div>
+
+    <form id="formulaire-info" class="formulaire" autocomplete="off">
+      <h2 id="titre-formulaire-info">Ajouter une carte Info</h2>
+      <div class="ligne ligne-2">
+        <label>Titre *<input name="titre" required maxlength="120" placeholder="Planning des streams"></label>
+        <label>Étiquette<input name="type" list="types-info" maxlength="30" placeholder="Info">
+          <small>Le petit mot en violet au-dessus du titre.</small></label>
+      </div>
+      <datalist id="types-info"><option value="Info"><option value="Clip"><option value="Planning"><option value="Setup"><option value="Projet"></datalist>
+      <label>Texte<textarea name="description" rows="3" maxlength="1000"></textarea></label>
+      <label>Lien (facultatif)<input name="lien" type="url" maxlength="500" placeholder="https://...">
+        <small>Si tu mets un lien, la carte devient cliquable.</small></label>
+      <div id="retour-info"></div>
+      <div class="boutons">
+        <button class="btn" type="submit" id="envoyer-info">Ajouter</button>
+        <button class="btn btn-contour" type="button" id="annuler-info" hidden>Annuler</button>
+      </div>
+    </form>
+    <h2>Cartes Info</h2>
+    <p class="meta">Elles s'affichent dans cet ordre sur la page Info. Les 3 premières sont aussi sur l'accueil.</p>
+    <div id="liste-infos"></div>`;
 
   $("#deconnexion").onclick = seDeconnecter;
   brancherFormulaire();
   await rafraichirListe();
+  await brancherInfos();
 }
 
 let enEdition = null; // id de la rediff en cours de modification
@@ -302,6 +324,121 @@ async function rafraichirListe() {
       }
     }
   };
+}
+
+/* ---------- Cartes Info ---------- */
+
+let infosAdmin = [];
+let infoEnEdition = null; // position de la carte en cours de modification
+
+async function brancherInfos() {
+  await chargerInfos(); // défini dans main.js
+  // Les liens qui ne sont pas des adresses web (ex: "#setup") sont ignorés, sinon le serveur refuserait la liste.
+  infosAdmin = INFOS.map((i) => ({
+    titre: i.titre || "",
+    type: i.type || "",
+    description: i.description || "",
+    lien: /^https?:\/\//i.test(i.lien || "") ? i.lien : "",
+  }));
+  const f = $("#formulaire-info");
+  reinitialiserInfo();
+  afficherInfos();
+
+  $("#annuler-info").onclick = reinitialiserInfo;
+
+  f.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const carte = { titre: f.titre.value.trim(), type: f.type.value.trim(), description: f.description.value.trim(), lien: f.lien.value.trim() };
+    const nouvelles = [...infosAdmin];
+    if (infoEnEdition === null) nouvelles.push(carte);
+    else nouvelles[infoEnEdition] = carte;
+    const texte = infoEnEdition === null ? "Carte ajoutée !" : "Carte modifiée !";
+    if (await enregistrerInfos(nouvelles, $("#envoyer-info"))) {
+      reinitialiserInfo();
+      $("#retour-info").innerHTML = message(texte, "ok");
+    }
+  });
+
+  $("#liste-infos").onclick = async (e) => {
+    const bouton = e.target.closest("button[data-action]");
+    if (!bouton) return;
+    const i = Number(bouton.dataset.index);
+    const nouvelles = [...infosAdmin];
+    const action = bouton.dataset.action;
+
+    if (action === "modifier") {
+      const carte = infosAdmin[i];
+      infoEnEdition = i;
+      f.titre.value = carte.titre;
+      f.type.value = carte.type;
+      f.description.value = carte.description;
+      f.lien.value = carte.lien;
+      $("#titre-formulaire-info").textContent = "Modifier la carte";
+      $("#envoyer-info").textContent = "Enregistrer";
+      $("#annuler-info").hidden = false;
+      $("#retour-info").innerHTML = "";
+      f.scrollIntoView({ behavior: "smooth" });
+      return;
+    }
+    if (action === "monter" && i > 0) [nouvelles[i - 1], nouvelles[i]] = [nouvelles[i], nouvelles[i - 1]];
+    else if (action === "descendre" && i < nouvelles.length - 1) [nouvelles[i + 1], nouvelles[i]] = [nouvelles[i], nouvelles[i + 1]];
+    else if (action === "supprimer") {
+      if (!confirm(`Supprimer la carte « ${infosAdmin[i].titre} » ?`)) return;
+      nouvelles.splice(i, 1);
+    } else return;
+    if (infoEnEdition !== null) reinitialiserInfo();
+    await enregistrerInfos(nouvelles, bouton);
+  };
+}
+
+function reinitialiserInfo() {
+  $("#formulaire-info").reset();
+  infoEnEdition = null;
+  $("#titre-formulaire-info").textContent = "Ajouter une carte Info";
+  $("#envoyer-info").textContent = "Ajouter";
+  $("#annuler-info").hidden = true;
+  $("#retour-info").innerHTML = "";
+}
+
+async function enregistrerInfos(nouvelles, bouton) {
+  bouton.disabled = true;
+  try {
+    infosAdmin = await appelApi("/infos", { method: "PUT", body: JSON.stringify(nouvelles) });
+    afficherInfos();
+    return true;
+  } catch (err) {
+    if (err.statut === 401) {
+      afficherAdmin("Ta connexion a expiré, reconnecte-toi.");
+      return false;
+    }
+    $("#retour-info").innerHTML = message(err.message, "erreur");
+    return false;
+  } finally {
+    bouton.disabled = false;
+  }
+}
+
+function afficherInfos() {
+  const dernier = infosAdmin.length - 1;
+  $("#liste-infos").innerHTML =
+    infosAdmin
+      .map(
+        (c, i) => `
+      <div class="ligne-admin">
+        <div class="ligne-admin-infos">
+          ${c.type ? `<span class="etiquette">${echapper(c.type)}</span>` : ""}
+          <strong>${echapper(c.titre)}</strong>
+          <p class="meta">${echapper(c.description)}${c.lien ? `<br>🔗 ${echapper(c.lien)}` : ""}</p>
+        </div>
+        <div class="boutons">
+          <button class="btn btn-contour btn-petit" data-action="monter" data-index="${i}" ${i === 0 ? "disabled" : ""} aria-label="Monter">↑</button>
+          <button class="btn btn-contour btn-petit" data-action="descendre" data-index="${i}" ${i === dernier ? "disabled" : ""} aria-label="Descendre">↓</button>
+          <button class="btn btn-contour btn-petit" data-action="modifier" data-index="${i}">Modifier</button>
+          <button class="btn btn-danger btn-petit" data-action="supprimer" data-index="${i}">Supprimer</button>
+        </div>
+      </div>`
+      )
+      .join("") || `<p class="vide">Aucune carte pour l'instant.</p>`;
 }
 
 window.pageAdmin = () => afficherAdmin(recupererRetourTwitch() || "");

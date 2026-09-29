@@ -76,6 +76,23 @@ async function chargerRedifs() {
   }
 }
 
+/* ---------- Cartes Info : celles de l'espace admin, sinon celles de contenu.js ---------- */
+
+let INFOS = [...SITE.autres];
+
+async function chargerInfos() {
+  if (!SITE.api) return;
+  try {
+    const rep = await fetch(`${SITE.api.replace(/\/$/, "")}/infos`, { cache: "no-store" });
+    if (!rep.ok) return;
+    const enLigne = await rep.json();
+    // null = jamais modifiées depuis l'espace admin : on garde celles de contenu.js
+    if (Array.isArray(enLigne)) INFOS = enLigne;
+  } catch {
+    // Serveur injoignable : on garde celles de contenu.js.
+  }
+}
+
 function redifsTriees() {
   return [...REDIFS].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 }
@@ -86,7 +103,7 @@ function entete(page) {
   const liens = [
     ["accueil", "index.html", "Accueil"],
     ["redifs", "redifs.html", "Rediffs"],
-    ["autres", "autres.html", "Le reste"],
+    ["autres", "autres.html", "Info"],
     ["a-propos", "a-propos.html", "À propos"],
   ];
   const nav = liens
@@ -140,7 +157,9 @@ function pageAccueil() {
   }
 
   $("#recentes").innerHTML = liste.slice(1, 7).map(carte).join("") || `<p class="vide">Rien d'autre pour l'instant.</p>`;
-  $("#apercu-autres").innerHTML = SITE.autres.slice(0, 3).map(carteAutre).join("");
+  const infos = INFOS.slice(0, 3);
+  $("#apercu-autres").innerHTML = infos.map(carteAutre).join("");
+  $("#section-infos").hidden = infos.length === 0;
   $("#commu").innerHTML = blocsCommu();
 }
 
@@ -236,13 +255,14 @@ function carteAutre(item) {
     <span class="etiquette">${echapper(item.type || "")}</span>
     <h3>${echapper(item.titre)}</h3>
     <p>${echapper(item.description || "")}</p>`;
-  return item.lien
-    ? `<a class="carte-autre" href="${echapper(item.lien)}"${/^https?:/.test(item.lien) ? ' target="_blank" rel="noopener"' : ""}>${contenu}</a>`
+  // Seuls les liens web (https://...) sont cliquables
+  return /^https?:\/\//i.test(item.lien || "")
+    ? `<a class="carte-autre" href="${echapper(item.lien)}" target="_blank" rel="noopener">${contenu}</a>`
     : `<div class="carte-autre">${contenu}</div>`;
 }
 
 function pageAutres() {
-  $("#liste-autres").innerHTML = SITE.autres.map(carteAutre).join("") || `<p class="vide">Bientôt…</p>`;
+  $("#liste-autres").innerHTML = INFOS.map(carteAutre).join("") || `<p class="vide">Bientôt…</p>`;
 }
 
 function pageAPropos() {
@@ -325,7 +345,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   verifierLive();
   setInterval(verifierLive, 2 * 60 * 1000); // re-vérifie toutes les 2 minutes
 
-  if (["accueil", "redifs", "video"].includes(page)) await chargerRedifs();
+  await Promise.all([
+    ["accueil", "redifs", "video"].includes(page) && chargerRedifs(),
+    ["accueil", "autres"].includes(page) && chargerInfos(),
+  ]);
 
   ({
     accueil: pageAccueil,

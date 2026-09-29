@@ -195,7 +195,11 @@ button.btn:disabled { opacity: .5; cursor: wait; }
 }
 .formulaire input:focus, .formulaire textarea:focus { outline: none; border-color: var(--accent); }
 .formulaire .ligne { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.formulaire .ligne-2 { grid-template-columns: 2fr 1fr; }
+.formulaire .ligne { align-items: start; }
+#formulaire-info { margin-top: 56px; }
 @media (max-width: 640px) { .formulaire .ligne { grid-template-columns: 1fr; } }
+.ligne-admin .etiquette { display: block; margin-bottom: 2px; }
 .formulaire .boutons { display: flex; gap: 10px; }
 .apercu-miniature { width: 240px; border-radius: 8px; }
 .message { padding: 10px 14px; border-radius: 10px; margin: 0 0 12px; }
