@@ -15,11 +15,19 @@
  *   DELETE /redifs/:id      supprime une rediff (admin)
  *   GET    /infos           cartes de la section Info (null si jamais modifiées)
  *   PUT    /infos           remplace toutes les cartes Info (admin)
+ *   GET    /live?kick=...   est-ce que la chaîne Kick est en live ?
+ *   GET    /reactions/:id   likes + commentaires d'une rediff
+ *   POST   /likes/:id       ajoute / retire son like (connecté)
+ *   POST   /commentaires/:id          ajoute un commentaire (connecté)
+ *   DELETE /commentaires/:id/:comId   supprime un commentaire (son auteur ou l'admin)
  */
 
 const CLE = "redifs";
-const CHAMPS = ["titre", "date", "duree", "categorie", "source", "video", "description"];
-const LIMITES = { titre: 200, date: 10, duree: 20, categorie: 60, source: 10, video: 40, description: 5000 };
+const CHAMPS = ["titre", "date", "duree", "categorie", "source", "video", "description", "chapitres"];
+const LIMITES = { titre: 200, date: 10, duree: 20, categorie: 60, source: 10, video: 40, description: 5000, chapitres: 5000 };
+const MAX_COMMENTAIRE = 500; // caractères
+const MAX_COMMENTAIRES = 1000; // par rediff
+const DELAI_COMMENTAIRE = 15; // secondes minimum entre deux commentaires d'un même compte
 
 const LIMITES_INFO = { titre: 120, type: 30, description: 1000, lien: 500 };
 const MAX_INFOS = 50;
@@ -107,11 +115,41 @@ function nouvelId(titre) {
   const slug = titre
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 50);
   return `${slug || "rediff"}-${Date.now().toString(36)}`;
+}
+
+// Kick n'a pas d'API publique simple : on lit la page "channel" de leur API.
+// Si Kick bloque la requête, on renvoie null (statut inconnu).
+async function kickEnLive(chaine) {
+  const rep = await fetch(`https://kick.com/api/v2/channels/${chaine}`, {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36",
+    },
+    cf: { cacheTtl: 60, cacheEverything: true }, // Cloudflare garde la réponse 1 minute
+  });
+  if (!rep.ok) return null;
+  const infos = await rep.json().catch(() => null);
+  if (!infos) return null;
+  return Boolean(infos.livestream && infos.livestream.is_live !== false);
+}
+
+async function reactions(env, id, moi) {
+  const [likes, commentaires] = await Promise.all([
+    env.REDIFS.get(`likes:${id}`, "json"),
+    env.REDIFS.get(`commentaires:${id}`, "json"),
+  ]);
+  const fans = likes || [];
+  return {
+    likes: fans.length,
+    jaime: Boolean(moi && fans.includes(moi.login)),
+    commentaires: commentaires || [],
+    moi,
+  };
 }
 
 export default {
@@ -119,7 +157,7 @@ export default {
     if (requete.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
     const url = new URL(requete.url);
-    const [, ressource, id] = url.pathname.split("/");
+    const [, ressource, id, sousId] = url.pathname.split("/").map((x) => decodeURIComponent(x || ""));
 
     try {
       if (requete.method === "GET" && ressource === "redifs" && !id) {
@@ -130,11 +168,80 @@ export default {
         return json(await env.REDIFS.get("infos", "json"), 200, { "Cache-Control": "no-store" });
       }
 
+      if (requete.method === "GET" && ressource === "live") {
+        const kick = (url.searchParams.get("kick") || "").toLowerCase();
+        if (!/^[a-z0-9_-]{1,40}$/.test(kick)) return erreur("Chaîne Kick invalide.", 400);
+        return json({ kick: await kickEnLive(kick) }, 200, { "Cache-Control": "public, max-age=60" });
+      }
+
       const moi = await utilisateur(requete, env);
 
       if (requete.method === "GET" && ressource === "moi") {
         return moi ? json(moi) : erreur("Non connecté.", 401);
       }
+
+      /* ----- Likes et commentaires (ouverts à tous les comptes Twitch) ----- */
+
+      if (["reactions", "likes", "commentaires"].includes(ressource)) {
+        if (!(await lireRedifs(env)).some((r) => r.id === id)) return erreur("Rediff introuvable.", 404);
+
+        if (requete.method === "GET" && ressource === "reactions") {
+          return json(await reactions(env, id, moi), 200, { "Cache-Control": "no-store" });
+        }
+
+        if (!moi) return erreur("Connecte-toi avec Twitch.", 401);
+
+        if (requete.method === "POST" && ressource === "likes") {
+          const cle = `likes:${id}`;
+          const fans = (await env.REDIFS.get(cle, "json")) || [];
+          const i = fans.indexOf(moi.login);
+          if (i === -1) fans.push(moi.login);
+          else fans.splice(i, 1);
+          await env.REDIFS.put(cle, JSON.stringify(fans));
+          return json({ likes: fans.length, jaime: i === -1 });
+        }
+
+        const cle = `commentaires:${id}`;
+
+        if (requete.method === "POST" && ressource === "commentaires" && !sousId) {
+          const texte = String((await requete.json().catch(() => ({}))).texte || "").trim();
+          if (!texte) return erreur("Le commentaire est vide.", 400);
+          if (texte.length > MAX_COMMENTAIRE) return erreur(`${MAX_COMMENTAIRE} caractères maximum.`, 400);
+
+          const cleDelai = `delai:${moi.login}`;
+          const dernier = Number(await env.REDIFS.get(cleDelai)) || 0;
+          if (Date.now() - dernier < DELAI_COMMENTAIRE * 1000) {
+            return erreur("Doucement ! Attends quelques secondes avant de recommenter.", 429);
+          }
+
+          const liste = (await env.REDIFS.get(cle, "json")) || [];
+          if (liste.length >= MAX_COMMENTAIRES) return erreur("Trop de commentaires sur cette rediff.", 400);
+          const commentaire = {
+            id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+            login: moi.login,
+            texte,
+            date: new Date().toISOString(),
+          };
+          liste.push(commentaire);
+          await env.REDIFS.put(cle, JSON.stringify(liste));
+          await env.REDIFS.put(cleDelai, String(Date.now()), { expirationTtl: 60 });
+          return json(commentaire, 201);
+        }
+
+        if (requete.method === "DELETE" && ressource === "commentaires" && sousId) {
+          const liste = (await env.REDIFS.get(cle, "json")) || [];
+          const i = liste.findIndex((c) => c.id === sousId);
+          if (i === -1) return erreur("Commentaire introuvable.", 404);
+          if (!moi.admin && liste[i].login !== moi.login) return erreur("Tu ne peux supprimer que tes commentaires.", 403);
+          liste.splice(i, 1);
+          await env.REDIFS.put(cle, JSON.stringify(liste));
+          return json({ ok: true });
+        }
+
+        return erreur("Route inconnue.", 404);
+      }
+
+      /* ----- Tout le reste est réservé à l'admin ----- */
 
       if (!moi) return erreur("Connecte-toi avec Twitch.", 401);
       if (!moi.admin) return erreur("Ce compte Twitch n'a pas le droit de publier.", 403);
@@ -182,6 +289,7 @@ export default {
         if (requete.method === "DELETE" && id) {
           liste.splice(index, 1);
           await ecrireRedifs(env, liste);
+          await Promise.all([env.REDIFS.delete(`likes:${id}`), env.REDIFS.delete(`commentaires:${id}`)]);
           return json({ ok: true });
         }
       }

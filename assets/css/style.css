@@ -214,6 +214,43 @@ button.btn:disabled { opacity: .5; cursor: wait; }
 @media (max-width: 640px) { .ligne-admin { flex-wrap: wrap; } .ligne-admin img { width: 96px; } }
 .lien-admin { color: var(--texte-2); }
 
+/* ---------- Chapitres ---------- */
+.chapitres { margin-top: 28px; max-width: 800px; }
+.chapitres h2 { font-size: 1.2rem; }
+.chapitres ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.chapitre {
+  display: flex; gap: 12px; width: 100%; text-align: left; font: inherit; color: var(--texte);
+  background: var(--fond-2); border: 1px solid var(--bord); border-radius: 8px; padding: 8px 12px; cursor: pointer;
+}
+.chapitre:hover { border-color: var(--accent); }
+.chapitre .temps { color: var(--accent); font-variant-numeric: tabular-nums; font-weight: 600; min-width: 64px; }
+
+/* ---------- Likes et commentaires ---------- */
+#reactions { padding-top: 0; }
+.barre-reactions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+.btn-like {
+  display: inline-flex; align-items: center; gap: 6px; font: inherit; font-weight: 700; cursor: pointer;
+  padding: 8px 16px; border-radius: 999px; background: var(--fond-2); border: 1px solid var(--bord); color: var(--texte);
+}
+.btn-like:hover { border-color: var(--accent-2); }
+.btn-like .coeur { color: var(--texte-2); font-size: 1.1rem; }
+.btn-like.actif { border-color: var(--accent-2); background: rgba(255, 79, 139, .12); }
+.btn-like.actif .coeur { color: var(--accent-2); }
+.lien-bouton { background: none; border: 0; padding: 0; font: inherit; color: var(--texte-2); text-decoration: underline; cursor: pointer; }
+.lien-bouton:hover { color: var(--texte); }
+.form-com { display: grid; gap: 10px; max-width: 800px; margin-bottom: 16px; }
+.form-com textarea {
+  font: inherit; padding: 10px 12px; border-radius: 10px; resize: vertical;
+  background: var(--fond-2); border: 1px solid var(--bord); color: var(--texte); width: 100%;
+}
+.form-com textarea:focus { outline: none; border-color: var(--accent); }
+.form-com .boutons { display: flex; justify-content: space-between; align-items: center; }
+.commentaires { list-style: none; padding: 0; margin: 16px 0 0; max-width: 800px; }
+.commentaire { padding: 14px 0; border-bottom: 1px solid var(--bord); }
+.commentaire-tete { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.commentaire-tete .lien-bouton { margin-left: auto; font-size: .85rem; }
+.commentaire p { margin: 4px 0 0; white-space: pre-line; overflow-wrap: anywhere; }
+
 /* ---------- Le reste ---------- */
 .grille-autres { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }
 .carte-autre {

@@ -20,8 +20,10 @@
 const SITE = {
   nom: "Julvig",
   slogan: "Toutes mes rediffs de stream, mes clips et le reste.",
-  // Chaîne Twitch pour le bouton "En direct" (laisse vide "" pour le cacher)
+  // Chaîne Twitch pour le bouton "Live" (laisse vide "" pour le cacher)
   chaineTwitch: "julvig2",
+  // Chaîne Kick : le bouton passe aussi en "EN LIVE" quand tu streames sur Kick ("" pour désactiver)
+  chaineKick: "julvig",
   // Lien pour les dons (bouton "Soutenir"). Laisse vide "" pour le cacher.
   don: "https://ko-fi.com/julvig",
   // Invitation au Discord de la commu (grand bloc sur l'accueil). Laisse vide "" pour le cacher.

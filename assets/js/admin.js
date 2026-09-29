@@ -1,36 +1,4 @@
-/* Espace admin : connexion avec Twitch et publication des rediffs. */
-
-const CLE_JETON = "julvig_jeton_twitch";
-const CLE_ETAT = "julvig_etat_oauth";
-
-function stockage(action, cle, valeur) {
-  try {
-    if (action === "lire") return localStorage.getItem(cle);
-    if (action === "ecrire") localStorage.setItem(cle, valeur);
-    if (action === "effacer") localStorage.removeItem(cle);
-  } catch {
-    return null;
-  }
-}
-
-function urlApi(chemin) {
-  return `${SITE.api.replace(/\/$/, "")}${chemin}`;
-}
-
-async function appelApi(chemin, options = {}) {
-  const jeton = stockage("lire", CLE_JETON);
-  const rep = await fetch(urlApi(chemin), {
-    ...options,
-    headers: {
-      ...(jeton ? { Authorization: `Bearer ${jeton}` } : {}),
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-    },
-  });
-  const donnees = await rep.json().catch(() => ({}));
-  if (rep.status === 401) stockage("effacer", CLE_JETON);
-  if (!rep.ok) throw Object.assign(new Error(donnees.erreur || `Erreur ${rep.status}`), { statut: rep.status });
-  return donnees;
-}
+/* Espace admin : publication des rediffs et des cartes Info. La connexion Twitch est dans compte.js. */
 
 // Reconnaît un lien YouTube ou Twitch et renvoie { source, video }.
 function analyserLien(lien) {
@@ -47,47 +15,9 @@ function lienDepuisRedif(r) {
   return r.source === "twitch" ? `https://www.twitch.tv/videos/${r.video}` : `https://www.youtube.com/watch?v=${r.video}`;
 }
 
-function adresseRetour() {
-  return location.origin + location.pathname;
-}
-
-function seConnecter() {
-  const etat = crypto.getRandomValues(new Uint32Array(4)).join("-");
-  stockage("ecrire", CLE_ETAT, etat);
-  const params = new URLSearchParams({
-    response_type: "token",
-    client_id: SITE.twitchClientId,
-    redirect_uri: adresseRetour(),
-    scope: "",
-    state: etat,
-  });
-  location.href = `https://id.twitch.tv/oauth2/authorize?${params}`;
-}
-
 function seDeconnecter() {
-  stockage("effacer", CLE_JETON);
+  deconnexion(); // défini dans compte.js
   afficherAdmin();
-}
-
-// Au retour de Twitch, le jeton arrive dans l'URL (#access_token=...).
-function recupererRetourTwitch() {
-  const params = new URLSearchParams(location.hash.slice(1) || location.search.slice(1));
-  const jeton = params.get("access_token");
-  const erreurTwitch = params.get("error_description") || params.get("error");
-  if (!jeton && !erreurTwitch) return null;
-
-  const etatAttendu = stockage("lire", CLE_ETAT);
-  stockage("effacer", CLE_ETAT);
-  history.replaceState(null, "", adresseRetour());
-
-  if (erreurTwitch) return `Connexion annulée : ${erreurTwitch}`;
-  if (!etatAttendu || params.get("state") !== etatAttendu) return "La connexion a échoué, réessaie.";
-  stockage("ecrire", CLE_JETON, jeton);
-  return null;
-}
-
-function message(texte, type = "info") {
-  return `<p class="message message-${type}">${echapper(texte)}</p>`;
 }
 
 /* ---------- Affichage ---------- */
@@ -147,6 +77,10 @@ async function afficherAdmin(avertissement = "") {
       </div>
       <datalist id="categories"></datalist>
       <label>Description<textarea name="description" rows="4" maxlength="5000"></textarea></label>
+      <label>Chapitres (facultatif)
+        <textarea name="chapitres" rows="5" maxlength="5000" placeholder="0:00 Début du stream&#10;12:30 On lance la partie&#10;1:45:10 Le boss final"></textarea>
+        <small>Un chapitre par ligne : le moment, puis le titre. Sur le site, cliquer sur un chapitre fait sauter la vidéo à ce moment.</small>
+      </label>
       <div id="retour-formulaire"></div>
       <div class="boutons">
         <button class="btn" type="submit" id="envoyer">Publier</button>
@@ -239,6 +173,7 @@ function brancherFormulaire() {
       duree: f.duree.value,
       categorie: f.categorie.value,
       description: f.description.value,
+      chapitres: f.chapitres.value,
       ...v,
     };
     const bouton = $("#envoyer");
@@ -306,6 +241,7 @@ async function rafraichirListe() {
       f.duree.value = r.duree || "";
       f.categorie.value = r.categorie || "";
       f.description.value = r.description || "";
+      f.chapitres.value = r.chapitres || "";
       afficherApercu(f.lien.value);
       $("#titre-formulaire").textContent = "Modifier la rediff";
       $("#envoyer").textContent = "Enregistrer";
@@ -441,4 +377,4 @@ function afficherInfos() {
       .join("") || `<p class="vide">Aucune carte pour l'instant.</p>`;
 }
 
-window.pageAdmin = () => afficherAdmin(recupererRetourTwitch() || "");
+window.pageAdmin = () => afficherAdmin(ERREUR_CONNEXION || "");

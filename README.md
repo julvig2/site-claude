@@ -9,7 +9,7 @@ Il n'y a rien à installer : ce sont juste des fichiers HTML, CSS et JavaScript.
 |---|---|
 | `index.html` | Accueil : la dernière rediff, les rediffs récentes, un aperçu du reste |
 | `redifs.html` | Toutes les rediffs, avec une recherche et un filtre par catégorie |
-| `video.html?id=...` | Le lecteur d'une rediff, avec des suggestions en dessous |
+| `video.html?id=...` | Le lecteur d'une rediff, ses chapitres cliquables, les likes et commentaires (connexion Twitch), et des suggestions |
 | `autres.html` | « Info » : planning, setup, clips… (modifiable depuis l'espace admin) |
 | `a-propos.html` | Présentation et liens vers les réseaux |
 | `admin.html` | Espace admin : connexion avec Twitch pour gérer les rediffs et les cartes Info |
@@ -44,7 +44,11 @@ En haut de `assets/css/style.css`, modifie `--accent` et `--accent-2`.
 
 ## Bouton « Live »
 
-Le bouton du menu affiche **Live OFF** (gris) quand tu ne streames pas et **EN LIVE** (rouge) quand tu es en live sur Twitch. Pendant un live, ton stream s'affiche aussi en haut de l'accueil. Le statut est vérifié toutes les 2 minutes grâce au service gratuit [DecAPI](https://decapi.me), sans clé d'API.
+Le bouton du menu affiche **Live OFF** (gris) quand tu ne streames pas et **EN LIVE** (rouge) quand tu es en live sur Twitch ou Kick. Pendant un live, ton stream s'affiche aussi en haut de l'accueil. Le statut est vérifié toutes les 2 minutes : Twitch via le service gratuit [DecAPI](https://decapi.me), Kick via le serveur Cloudflare.
+
+## Likes et commentaires
+
+Sur chaque rediff publiée depuis l'espace admin, les viewers peuvent se connecter avec Twitch pour liker et commenter (500 caractères max, un commentaire toutes les 15 secondes). Chacun peut supprimer ses commentaires ; l'admin peut supprimer tous les commentaires.
 
 ## Mettre le site en ligne (gratuit, avec GitHub Pages)
 
