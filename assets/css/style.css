@@ -12,6 +12,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { scroll-behavior: smooth; }
 body {
   margin: 0;
@@ -175,6 +176,39 @@ h1, h2, h3 { line-height: 1.2; margin: 0 0 .4em; }
 .soutenir ul { color: var(--texte-2); padding-left: 20px; }
 #kofiframe { width: 100%; height: 712px; border: 0; border-radius: var(--rayon); background: #f9f9f9; }
 @media (max-width: 860px) { .soutenir { grid-template-columns: 1fr; } }
+
+/* ---------- Espace admin ---------- */
+.admin { max-width: 860px; }
+.admin h2 { margin-top: 40px; }
+.barre-admin { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--texte-2); margin-bottom: 8px; }
+.btn-petit { padding: 6px 12px; font-size: .85rem; cursor: pointer; }
+.btn-danger { background: #c62828; }
+button.btn { font: inherit; font-weight: 600; cursor: pointer; }
+button.btn:disabled { opacity: .5; cursor: wait; }
+.formulaire { display: grid; gap: 16px; padding: 24px; margin-top: 16px; border-radius: var(--rayon); background: var(--fond-2); border: 1px solid var(--bord); }
+.formulaire h2 { margin: 0; }
+.formulaire label { display: grid; gap: 6px; font-weight: 600; font-size: .95rem; }
+.formulaire small { color: var(--texte-2); font-weight: 400; }
+.formulaire input, .formulaire textarea {
+  font: inherit; font-weight: 400; padding: 10px 12px; border-radius: 10px;
+  background: var(--fond); border: 1px solid var(--bord); color: var(--texte); width: 100%;
+}
+.formulaire input:focus, .formulaire textarea:focus { outline: none; border-color: var(--accent); }
+.formulaire .ligne { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 640px) { .formulaire .ligne { grid-template-columns: 1fr; } }
+.formulaire .boutons { display: flex; gap: 10px; }
+.apercu-miniature { width: 240px; border-radius: 8px; }
+.message { padding: 10px 14px; border-radius: 10px; margin: 0 0 12px; }
+.message-erreur { background: rgba(229, 57, 53, .15); color: #ff8a80; }
+.message-ok { background: rgba(67, 160, 71, .15); color: #a5d6a7; }
+.message-info { background: var(--fond-3); }
+.ligne-admin { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--bord); }
+.ligne-admin img { width: 120px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; background: var(--fond-3); flex-shrink: 0; }
+.ligne-admin-infos { flex: 1; min-width: 0; }
+.ligne-admin-infos a { text-decoration: none; }
+.ligne-admin .boutons { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 640px) { .ligne-admin { flex-wrap: wrap; } .ligne-admin img { width: 96px; } }
+.lien-admin { color: var(--texte-2); }
 
 /* ---------- Le reste ---------- */
 .grille-autres { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }

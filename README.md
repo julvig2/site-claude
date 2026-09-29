@@ -12,6 +12,7 @@ Il n'y a rien à installer : ce sont juste des fichiers HTML, CSS et JavaScript.
 | `video.html?id=...` | Le lecteur d'une rediff, avec des suggestions en dessous |
 | `autres.html` | « Le reste » : clips, projets, planning… |
 | `a-propos.html` | Présentation et liens vers les réseaux |
+| `admin.html` | Espace admin : connexion avec Twitch pour publier, modifier ou supprimer des rediffs |
 | `soutenir.html` | Page de dons avec le panneau Ko-fi intégré (carte bancaire ou PayPal) |
 
 ## Modifier le contenu
@@ -27,26 +28,15 @@ Il n'y a rien à installer : ce sont juste des fichiers HTML, CSS et JavaScript.
 
 ### Ajouter une rediff
 
-Copie ce bloc dans la liste `redifs` :
+Depuis l'**espace admin** du site (`admin.html`) : connecte-toi avec Twitch, colle le lien YouTube de ta rediff (mise en « non répertoriée ») et clique sur **Publier**.
+Pour installer l'espace admin la première fois, suis le guide [`worker/INSTALLATION.md`](worker/INSTALLATION.md).
+
+Tu peux aussi ajouter une rediff à la main dans la liste `redifs` de `assets/js/contenu.js` :
 
 ```js
-{
-  id: "mon-stream-du-30-sept",   // identifiant unique, sans espaces
-  titre: "Titre du stream",
-  date: "2026-09-30",            // format AAAA-MM-JJ
-  duree: "3h20",
-  categorie: "Just Chatting",    // sert aux filtres
-  source: "youtube",             // "youtube", "twitch" ou "fichier"
-  video: "dQw4w9WgXcQ",
-  description: "Petite description.",
-},
+{ id: "mon-stream", titre: "Titre", date: "2026-09-30", duree: "3h20",
+  categorie: "Just Chatting", source: "youtube", video: "ID_YOUTUBE", description: "..." },
 ```
-
-- **YouTube** : `video` = ce qui suit `v=` dans le lien (`youtube.com/watch?v=`**`dQw4w9WgXcQ`**). La miniature est trouvée automatiquement.
-- **Twitch** : `video` = le numéro dans le lien (`twitch.tv/videos/`**`1234567890`**). Attention, Twitch supprime les VOD au bout de 7 à 60 jours selon ton statut. Pour les garder longtemps, mieux vaut les mettre sur YouTube.
-- **Fichier** : `video` = le chemin d'un `.mp4` placé dans le dépôt. GitHub limite chaque fichier à 100 Mo, donc c'est à réserver aux petits clips.
-
-Tu peux ajouter `miniature: "assets/img/mon-image.jpg"` pour choisir l'image affichée.
 
 ### Changer les couleurs
 

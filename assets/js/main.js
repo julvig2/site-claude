@@ -59,8 +59,25 @@ function carte(redif) {
     </a>`;
 }
 
+/* ---------- Rediffs : celles de contenu.js + celles publiées depuis l'espace admin ---------- */
+
+let REDIFS = [...SITE.redifs];
+
+async function chargerRedifs() {
+  if (!SITE.api) return;
+  try {
+    const rep = await fetch(`${SITE.api.replace(/\/$/, "")}/redifs`, { cache: "no-store" });
+    if (!rep.ok) return;
+    const enLigne = await rep.json();
+    const ids = new Set(SITE.redifs.map((r) => r.id));
+    REDIFS = [...SITE.redifs, ...enLigne.filter((r) => !ids.has(r.id))];
+  } catch {
+    // Serveur injoignable : on affiche au moins les rediffs de contenu.js.
+  }
+}
+
 function redifsTriees() {
-  return [...SITE.redifs].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  return [...REDIFS].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 }
 
 /* ---------- En-tête et pied de page communs ---------- */
@@ -96,7 +113,7 @@ function pied() {
   return `
     <div class="conteneur pied-inner">
       <div class="reseaux">${reseaux}</div>
-      <p>© ${new Date().getFullYear()} ${echapper(SITE.nom)}</p>
+      <p>© ${new Date().getFullYear()} ${echapper(SITE.nom)}${SITE.api ? ` · <a class="lien-admin" href="admin.html">Espace admin</a>` : ""}</p>
     </div>`;
 }
 
@@ -293,7 +310,7 @@ function afficherLive(enLive) {
 
 /* ---------- Démarrage ---------- */
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   const page = document.body.dataset.page;
   $("#entete").innerHTML = entete(page);
   $("#pied").innerHTML = pied();
@@ -305,6 +322,11 @@ document.addEventListener("DOMContentLoaded", () => {
     burger.setAttribute("aria-expanded", ouvert);
   });
 
+  verifierLive();
+  setInterval(verifierLive, 2 * 60 * 1000); // re-vérifie toutes les 2 minutes
+
+  if (["accueil", "redifs", "video"].includes(page)) await chargerRedifs();
+
   ({
     accueil: pageAccueil,
     redifs: pageRedifs,
@@ -312,8 +334,6 @@ document.addEventListener("DOMContentLoaded", () => {
     autres: pageAutres,
     "a-propos": pageAPropos,
     soutenir: pageSoutenir,
+    admin: window.pageAdmin, // défini dans admin.js
   })[page]?.();
-
-  verifierLive();
-  setInterval(verifierLive, 2 * 60 * 1000); // re-vérifie toutes les 2 minutes
 });

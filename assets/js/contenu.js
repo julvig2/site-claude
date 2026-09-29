@@ -3,8 +3,8 @@
  *  CONTENU DU SITE — c'est le SEUL fichier à modifier
  * ==========================================================
  *
- *  Pour ajouter une rediffusion, copie un bloc { ... } dans
- *  la liste "redifs" (le plus récent en premier) et remplis-le.
+ *  Les rediffs se publient depuis l'espace admin (admin.html).
+ *  Tu peux aussi en ajouter à la main dans la liste "redifs" ci-dessous.
  *
  *  source :
  *    - "youtube" -> id = la partie après "v=" dans l'URL
@@ -27,6 +27,11 @@ const SITE = {
   // Invitation au Discord de la commu (grand bloc sur l'accueil). Laisse vide "" pour le cacher.
   discord: "https://discord.com/invite/kV82XWFFbA",
 
+  // Espace admin (voir worker/INSTALLATION.md) :
+  // adresse du serveur Cloudflare Worker et identifiant de l'application Twitch.
+  api: "",
+  twitchClientId: "",
+
   reseaux: [
     { nom: "Twitch", url: "https://www.twitch.tv/julvig2" },
     { nom: "YouTube", url: "https://www.youtube.com/@julvig3" },
@@ -35,39 +40,11 @@ const SITE = {
     { nom: "Ko-fi", url: "https://ko-fi.com/julvig" },
   ],
 
-  redifs: [
-    {
-      id: "stream-exemple-3",
-      titre: "Soirée chill : on découvre un nouveau jeu",
-      date: "2026-09-25",
-      duree: "3h12",
-      categorie: "Just Chatting",
-      source: "youtube",
-      video: "dQw4w9WgXcQ",
-      description: "Un stream tranquille avec le chat. Remplace ce texte par ta description.",
-    },
-    {
-      id: "stream-exemple-2",
-      titre: "Run complet en une soirée",
-      date: "2026-09-20",
-      duree: "4h45",
-      categorie: "Speedrun",
-      source: "twitch",
-      video: "1234567890",
-      miniature: "",
-      description: "Exemple de rediff hébergée sur Twitch.",
-    },
-    {
-      id: "stream-exemple-1",
-      titre: "Premier stream !",
-      date: "2026-09-12",
-      duree: "2h03",
-      categorie: "Just Chatting",
-      source: "youtube",
-      video: "jNQXAC9IVRw",
-      description: "Là où tout a commencé.",
-    },
-  ],
+  // Les rediffs se publient depuis l'espace admin du site (admin.html),
+  // en se connectant avec Twitch. Tu peux aussi en ajouter ici à la main :
+  // { id: "mon-stream", titre: "...", date: "2026-09-30", duree: "3h20",
+  //   categorie: "Just Chatting", source: "youtube", video: "ID_YOUTUBE", description: "..." },
+  redifs: [],
 
   // Section "Le reste" : clips, projets, montages, setup... tout ce que tu veux.
   autres: [

@@ -1,0 +1,307 @@
+/* Espace admin : connexion avec Twitch et publication des rediffs. */
+
+const CLE_JETON = "julvig_jeton_twitch";
+const CLE_ETAT = "julvig_etat_oauth";
+
+function stockage(action, cle, valeur) {
+  try {
+    if (action === "lire") return localStorage.getItem(cle);
+    if (action === "ecrire") localStorage.setItem(cle, valeur);
+    if (action === "effacer") localStorage.removeItem(cle);
+  } catch {
+    return null;
+  }
+}
+
+function urlApi(chemin) {
+  return `${SITE.api.replace(/\/$/, "")}${chemin}`;
+}
+
+async function appelApi(chemin, options = {}) {
+  const jeton = stockage("lire", CLE_JETON);
+  const rep = await fetch(urlApi(chemin), {
+    ...options,
+    headers: {
+      ...(jeton ? { Authorization: `Bearer ${jeton}` } : {}),
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+    },
+  });
+  const donnees = await rep.json().catch(() => ({}));
+  if (rep.status === 401) stockage("effacer", CLE_JETON);
+  if (!rep.ok) throw Object.assign(new Error(donnees.erreur || `Erreur ${rep.status}`), { statut: rep.status });
+  return donnees;
+}
+
+// Reconnaît un lien YouTube ou Twitch et renvoie { source, video }.
+function analyserLien(lien) {
+  const texte = (lien || "").trim();
+  let m = texte.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|live\/|embed\/)|youtu\.be\/)([\w-]{11})/i);
+  if (m) return { source: "youtube", video: m[1] };
+  m = texte.match(/twitch\.tv\/videos\/(\d+)/i);
+  if (m) return { source: "twitch", video: m[1] };
+  if (/^[\w-]{11}$/.test(texte)) return { source: "youtube", video: texte };
+  return null;
+}
+
+function lienDepuisRedif(r) {
+  return r.source === "twitch" ? `https://www.twitch.tv/videos/${r.video}` : `https://www.youtube.com/watch?v=${r.video}`;
+}
+
+function adresseRetour() {
+  return location.origin + location.pathname;
+}
+
+function seConnecter() {
+  const etat = crypto.getRandomValues(new Uint32Array(4)).join("-");
+  stockage("ecrire", CLE_ETAT, etat);
+  const params = new URLSearchParams({
+    response_type: "token",
+    client_id: SITE.twitchClientId,
+    redirect_uri: adresseRetour(),
+    scope: "",
+    state: etat,
+  });
+  location.href = `https://id.twitch.tv/oauth2/authorize?${params}`;
+}
+
+function seDeconnecter() {
+  stockage("effacer", CLE_JETON);
+  afficherAdmin();
+}
+
+// Au retour de Twitch, le jeton arrive dans l'URL (#access_token=...).
+function recupererRetourTwitch() {
+  const params = new URLSearchParams(location.hash.slice(1) || location.search.slice(1));
+  const jeton = params.get("access_token");
+  const erreurTwitch = params.get("error_description") || params.get("error");
+  if (!jeton && !erreurTwitch) return null;
+
+  const etatAttendu = stockage("lire", CLE_ETAT);
+  stockage("effacer", CLE_ETAT);
+  history.replaceState(null, "", adresseRetour());
+
+  if (erreurTwitch) return `Connexion annulée : ${erreurTwitch}`;
+  if (!etatAttendu || params.get("state") !== etatAttendu) return "La connexion a échoué, réessaie.";
+  stockage("ecrire", CLE_JETON, jeton);
+  return null;
+}
+
+function message(texte, type = "info") {
+  return `<p class="message message-${type}">${echapper(texte)}</p>`;
+}
+
+/* ---------- Affichage ---------- */
+
+async function afficherAdmin(avertissement = "") {
+  const zone = $("#admin");
+
+  if (!SITE.api || !SITE.twitchClientId) {
+    zone.innerHTML = message(
+      "L'espace admin n'est pas encore configuré : il faut remplir « api » et « twitchClientId » dans assets/js/contenu.js (voir worker/INSTALLATION.md).",
+      "erreur"
+    );
+    return;
+  }
+
+  const boutonConnexion = `<button class="btn btn-twitch" id="connexion">Se connecter avec Twitch</button>`;
+
+  if (!stockage("lire", CLE_JETON)) {
+    zone.innerHTML = `${avertissement ? message(avertissement, "erreur") : ""}
+      <p>Connecte-toi avec ton compte Twitch pour publier des rediffs.</p>${boutonConnexion}`;
+    $("#connexion").onclick = seConnecter;
+    return;
+  }
+
+  zone.innerHTML = `<p class="meta">Vérification de la connexion…</p>`;
+  let moi;
+  try {
+    moi = await appelApi("/moi");
+  } catch (e) {
+    if (e.statut === 401) return afficherAdmin("Ta connexion a expiré, reconnecte-toi.");
+    zone.innerHTML = message(`Impossible de joindre le serveur : ${e.message}`, "erreur");
+    return;
+  }
+
+  const barre = `<div class="barre-admin">Connecté : <strong>${echapper(moi.login)}</strong>
+    <button class="btn btn-contour btn-petit" id="deconnexion">Se déconnecter</button></div>`;
+
+  if (!moi.admin) {
+    zone.innerHTML = barre + message("Ce compte Twitch n'a pas accès à l'espace admin.", "erreur");
+    $("#deconnexion").onclick = seDeconnecter;
+    return;
+  }
+
+  zone.innerHTML = `${barre}
+    <form id="formulaire" class="formulaire" autocomplete="off">
+      <h2 id="titre-formulaire">Publier une rediff</h2>
+      <label>Lien de la vidéo YouTube *
+        <input name="lien" required placeholder="https://www.youtube.com/watch?v=...">
+        <small>Mets ta vidéo en « non répertoriée » sur YouTube, puis colle son lien ici. Un lien de VOD Twitch marche aussi.</small>
+      </label>
+      <div id="apercu-video"></div>
+      <label>Titre *<input name="titre" required maxlength="200"></label>
+      <div class="ligne">
+        <label>Date du stream<input name="date" type="date"></label>
+        <label>Durée<input name="duree" placeholder="3h20" maxlength="20"></label>
+        <label>Catégorie<input name="categorie" list="categories" placeholder="Just Chatting" maxlength="60"></label>
+      </div>
+      <datalist id="categories"></datalist>
+      <label>Description<textarea name="description" rows="4" maxlength="5000"></textarea></label>
+      <div id="retour-formulaire"></div>
+      <div class="boutons">
+        <button class="btn" type="submit" id="envoyer">Publier</button>
+        <button class="btn btn-contour" type="button" id="annuler" hidden>Annuler</button>
+      </div>
+    </form>
+    <h2>Rediffs publiées</h2>
+    <div id="liste-admin"></div>`;
+
+  $("#deconnexion").onclick = seDeconnecter;
+  brancherFormulaire();
+  await rafraichirListe();
+}
+
+let enEdition = null; // id de la rediff en cours de modification
+
+function reinitialiserFormulaire() {
+  const f = $("#formulaire");
+  f.reset();
+  f.date.value = new Date().toISOString().slice(0, 10);
+  enEdition = null;
+  $("#titre-formulaire").textContent = "Publier une rediff";
+  $("#envoyer").textContent = "Publier";
+  $("#annuler").hidden = true;
+  $("#apercu-video").innerHTML = "";
+}
+
+function afficherApercu(lien) {
+  const v = analyserLien(lien);
+  const zone = $("#apercu-video");
+  if (!lien.trim()) return (zone.innerHTML = "");
+  if (!v) return (zone.innerHTML = message("Lien non reconnu. Colle un lien YouTube (ou de VOD Twitch).", "erreur"));
+  zone.innerHTML =
+    v.source === "youtube"
+      ? `<img class="apercu-miniature" src="https://i.ytimg.com/vi/${v.video}/mqdefault.jpg" alt="">`
+      : message("VOD Twitch reconnue.", "ok");
+  return v;
+}
+
+function brancherFormulaire() {
+  const f = $("#formulaire");
+  reinitialiserFormulaire();
+
+  f.lien.addEventListener("input", async () => {
+    const v = afficherApercu(f.lien.value);
+    // Remplit le titre automatiquement depuis YouTube
+    if (v?.source === "youtube" && !f.titre.value.trim()) {
+      try {
+        const { titre } = await appelApi(`/apercu?url=${encodeURIComponent(lienDepuisRedif(v))}`);
+        if (titre && !f.titre.value.trim()) f.titre.value = titre;
+      } catch {
+        // Pas grave, le titre se remplit à la main.
+      }
+    }
+  });
+
+  $("#annuler").onclick = reinitialiserFormulaire;
+
+  f.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const v = analyserLien(f.lien.value);
+    const retour = $("#retour-formulaire");
+    if (!v) return (retour.innerHTML = message("Le lien de la vidéo n'est pas reconnu.", "erreur"));
+
+    const donnees = {
+      titre: f.titre.value,
+      date: f.date.value,
+      duree: f.duree.value,
+      categorie: f.categorie.value,
+      description: f.description.value,
+      ...v,
+    };
+    const bouton = $("#envoyer");
+    bouton.disabled = true;
+    try {
+      if (enEdition) {
+        await appelApi(`/redifs/${encodeURIComponent(enEdition)}`, { method: "PUT", body: JSON.stringify(donnees) });
+      } else {
+        await appelApi("/redifs", { method: "POST", body: JSON.stringify(donnees) });
+      }
+      const texte = enEdition ? "Rediff modifiée !" : "Rediff publiée ! Elle est déjà visible sur le site.";
+      reinitialiserFormulaire();
+      retour.innerHTML = message(texte, "ok");
+      await rafraichirListe();
+    } catch (err) {
+      if (err.statut === 401) return afficherAdmin("Ta connexion a expiré, reconnecte-toi.");
+      retour.innerHTML = message(err.message, "erreur");
+    } finally {
+      bouton.disabled = false;
+    }
+  });
+}
+
+async function rafraichirListe() {
+  await chargerRedifs();
+  const liste = redifsTriees();
+  const categories = [...new Set(liste.map((r) => r.categorie).filter(Boolean))];
+  $("#categories").innerHTML = categories.map((c) => `<option value="${echapper(c)}">`).join("");
+
+  const fixes = new Set(SITE.redifs.map((r) => r.id));
+  $("#liste-admin").innerHTML =
+    liste
+      .map(
+        (r) => `
+      <div class="ligne-admin">
+        <img src="${echapper(miniature(r) || "")}" alt="" onerror="this.style.visibility='hidden'">
+        <div class="ligne-admin-infos">
+          <a href="video.html?id=${encodeURIComponent(r.id)}"><strong>${echapper(r.titre)}</strong></a>
+          <p class="meta">${formaterDate(r.date)}${r.categorie ? ` · ${echapper(r.categorie)}` : ""}</p>
+        </div>
+        ${
+          fixes.has(r.id)
+            ? `<span class="meta">Dans contenu.js</span>`
+            : `<div class="boutons">
+                <button class="btn btn-contour btn-petit" data-modifier="${echapper(r.id)}">Modifier</button>
+                <button class="btn btn-danger btn-petit" data-supprimer="${echapper(r.id)}">Supprimer</button>
+              </div>`
+        }
+      </div>`
+      )
+      .join("") || `<p class="vide">Aucune rediff publiée pour l'instant.</p>`;
+
+  $("#liste-admin").onclick = async (e) => {
+    const idModif = e.target.dataset.modifier;
+    const idSuppr = e.target.dataset.supprimer;
+    const r = REDIFS.find((x) => x.id === (idModif || idSuppr));
+    if (!r) return;
+
+    if (idModif) {
+      const f = $("#formulaire");
+      enEdition = r.id;
+      f.lien.value = lienDepuisRedif(r);
+      f.titre.value = r.titre || "";
+      f.date.value = r.date || "";
+      f.duree.value = r.duree || "";
+      f.categorie.value = r.categorie || "";
+      f.description.value = r.description || "";
+      afficherApercu(f.lien.value);
+      $("#titre-formulaire").textContent = "Modifier la rediff";
+      $("#envoyer").textContent = "Enregistrer";
+      $("#annuler").hidden = false;
+      $("#retour-formulaire").innerHTML = "";
+      f.scrollIntoView({ behavior: "smooth" });
+    }
+
+    if (idSuppr && confirm(`Supprimer « ${r.titre} » du site ?\n(La vidéo reste sur YouTube.)`)) {
+      try {
+        await appelApi(`/redifs/${encodeURIComponent(r.id)}`, { method: "DELETE" });
+        if (enEdition === r.id) reinitialiserFormulaire();
+        await rafraichirListe();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+  };
+}
+
+window.pageAdmin = () => afficherAdmin(recupererRetourTwitch() || "");
