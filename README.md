@@ -9,7 +9,7 @@ Il n'y a rien à installer : ce sont juste des fichiers HTML, CSS et JavaScript.
 |---|---|
 | `index.html` | Accueil : la dernière rediff, les rediffs récentes, un aperçu du reste |
 | `redifs.html` | Toutes les rediffs, avec une recherche et un filtre par catégorie |
-| `video.html?id=...` | Le lecteur d'une rediff, ses chapitres cliquables, les likes et commentaires (connexion Twitch), et des suggestions |
+| `video.html?id=...` | Le lecteur d'une rediff, la frise des chapitres (avec une image par chapitre), les likes et commentaires (connexion Twitch), et des suggestions |
 | `autres.html` | « Info » : planning, setup, clips… (modifiable depuis l'espace admin) |
 | `a-propos.html` | Présentation et liens vers les réseaux |
 | `admin.html` | Espace admin : connexion avec Twitch pour gérer les rediffs et les cartes Info |

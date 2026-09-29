@@ -82,6 +82,8 @@ async function afficherAdmin(avertissement = "") {
         <small>Un chapitre par ligne : le moment, puis le titre. Sur le site, ils s'affichent sous la vidéo : un clic fait sauter la vidéo à ce moment.</small>
         <small id="nb-chapitres"></small>
       </label>
+      <div id="images-chapitres" class="images-chapitres"></div>
+      <input type="file" id="fichier-image" accept="image/*" hidden>
       <div id="retour-formulaire"></div>
       <div class="boutons">
         <button class="btn" type="submit" id="envoyer">Publier</button>
@@ -130,6 +132,8 @@ function reinitialiserFormulaire() {
   $("#annuler").hidden = true;
   $("#apercu-video").innerHTML = "";
   $("#nb-chapitres").innerHTML = "";
+  imagesEdition = {};
+  $("#images-chapitres").innerHTML = "";
 }
 
 function afficherApercu(lien) {
@@ -145,6 +149,7 @@ function afficherApercu(lien) {
 }
 
 function compterChapitres() {
+  afficherImagesChapitres();
   const texte = $("#formulaire").chapitres.value;
   const n = analyserChapitres(texte).length; // défini dans main.js
   $("#nb-chapitres").innerHTML = !texte.trim()
@@ -152,6 +157,137 @@ function compterChapitres() {
     : n
       ? `<span class="ok">✔ ${n} chapitre${n > 1 ? "s" : ""} reconnu${n > 1 ? "s" : ""}</span>`
       : `<span class="ko">Aucun chapitre reconnu : mets un moment comme 12:30 sur chaque ligne.</span>`;
+}
+
+/* ---------- Images des chapitres ---------- */
+
+let imagesEdition = {}; // { "Titre du chapitre": "https://..." }
+const dejaCherches = new Set(); // titres déjà cherchés automatiquement sur Twitch
+let titreImageEnCours = null; // chapitre pour lequel on choisit un fichier
+let minuteurImages = null;
+
+const normaliser = (t) => String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+
+function titresChapitres() {
+  return [...new Set(analyserChapitres($("#formulaire").chapitres.value).map((c) => c.titre))];
+}
+
+// Cherche la jaquette d'un jeu / d'une catégorie Twitch à partir du titre du chapitre.
+// exact = true : seulement si le nom correspond exactement (pour la recherche automatique).
+async function jaquetteTwitch(titre, exact) {
+  const jeton = stockage("lire", CLE_JETON);
+  const rep = await fetch(`https://api.twitch.tv/helix/search/categories?first=10&query=${encodeURIComponent(titre)}`, {
+    headers: { Authorization: `Bearer ${jeton}`, "Client-Id": SITE.twitchClientId },
+  });
+  if (!rep.ok) return null;
+  const { data = [] } = await rep.json();
+  const trouve = data.find((c) => normaliser(c.name) === normaliser(titre)) || (!exact && data[0]);
+  return trouve ? trouve.box_art_url.replace(/-(\{width\}x\{height\}|\d+x\d+)\./, "-285x380.") : null;
+}
+
+function afficherImagesChapitres() {
+  const zone = $("#images-chapitres");
+  const titres = titresChapitres();
+  if (!titres.length) return (zone.innerHTML = "");
+  zone.innerHTML = `
+    <strong>Images des chapitres</strong>
+    <small>Si le titre est le nom d'un jeu Twitch, sa jaquette est trouvée toute seule. Sinon, clique sur 🔍 ou choisis ta propre image.</small>
+    ${titres
+      .map(
+        (t) => `
+      <div class="ligne-image" data-titre="${echapper(t)}">
+        <span class="vignette" style="--c:${couleurChapitre(t)}"><span class="initiale">${echapper(t.charAt(0).toUpperCase())}</span>${
+          imagesEdition[t] ? `<img src="${echapper(imagesEdition[t])}" alt="" onerror="this.remove()">` : ""
+        }</span>
+        <span class="ligne-image-titre">${echapper(t)}</span>
+        <button type="button" class="btn btn-contour btn-petit" data-image="twitch" title="Chercher la jaquette sur Twitch">🔍 Twitch</button>
+        <button type="button" class="btn btn-contour btn-petit" data-image="fichier">📁 Mon image</button>
+        ${imagesEdition[t] ? `<button type="button" class="btn btn-contour btn-petit" data-image="retirer" title="Retirer l'image">✕</button>` : ""}
+      </div>`
+      )
+      .join("")}
+    <div id="retour-images"></div>`;
+
+  // Recherche automatique des jaquettes (après une petite pause dans la saisie)
+  clearTimeout(minuteurImages);
+  minuteurImages = setTimeout(async () => {
+    let change = false;
+    for (const t of titresChapitres()) {
+      if (imagesEdition[t] || dejaCherches.has(t)) continue;
+      dejaCherches.add(t);
+      const url = await jaquetteTwitch(t, true).catch(() => null);
+      if (url && !imagesEdition[t]) {
+        imagesEdition[t] = url;
+        change = true;
+      }
+    }
+    if (change) afficherImagesChapitres();
+  }, 800);
+}
+
+// Redimensionne l'image (480 px max) et l'envoie au serveur
+async function envoyerImage(fichier) {
+  const img = await createImageBitmap(fichier);
+  const echelle = Math.min(1, 480 / Math.max(img.width, img.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(img.width * echelle);
+  canvas.height = Math.round(img.height * echelle);
+  canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((ok) => canvas.toBlob(ok, "image/jpeg", 0.85));
+  const rep = await fetch(urlApi("/images"), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${stockage("lire", CLE_JETON)}`, "Content-Type": "image/jpeg" },
+    body: blob,
+  });
+  const donnees = await rep.json().catch(() => ({}));
+  if (!rep.ok) throw new Error(donnees.erreur || `Erreur ${rep.status}`);
+  return donnees.url;
+}
+
+function brancherImagesChapitres() {
+  const fichier = $("#fichier-image");
+
+  $("#images-chapitres").addEventListener("click", async (e) => {
+    const bouton = e.target.closest("[data-image]");
+    if (!bouton) return;
+    const titre = bouton.closest(".ligne-image").dataset.titre;
+    const action = bouton.dataset.image;
+
+    if (action === "retirer") {
+      delete imagesEdition[titre];
+      dejaCherches.add(titre); // ne pas la remettre automatiquement
+      afficherImagesChapitres();
+    }
+    if (action === "fichier") {
+      titreImageEnCours = titre;
+      fichier.click();
+    }
+    if (action === "twitch") {
+      bouton.disabled = true;
+      const url = await jaquetteTwitch(titre, false).catch(() => null);
+      if (url) {
+        imagesEdition[titre] = url;
+        afficherImagesChapitres();
+      } else {
+        bouton.disabled = false;
+        $("#retour-images").innerHTML = message(`Aucune catégorie Twitch trouvée pour « ${titre} ».`, "erreur");
+      }
+    }
+  });
+
+  fichier.addEventListener("change", async () => {
+    const f = fichier.files[0];
+    fichier.value = "";
+    if (!f || !titreImageEnCours) return;
+    const titre = titreImageEnCours;
+    $("#retour-images").innerHTML = message("Envoi de l'image…");
+    try {
+      imagesEdition[titre] = await envoyerImage(f);
+      afficherImagesChapitres();
+    } catch (err) {
+      $("#retour-images").innerHTML = message(`Impossible d'envoyer l'image : ${err.message}`, "erreur");
+    }
+  });
 }
 
 function brancherFormulaire() {
@@ -172,6 +308,7 @@ function brancherFormulaire() {
   });
 
   f.chapitres.addEventListener("input", compterChapitres);
+  brancherImagesChapitres();
 
   $("#annuler").onclick = reinitialiserFormulaire;
 
@@ -188,6 +325,8 @@ function brancherFormulaire() {
       categorie: f.categorie.value,
       description: f.description.value,
       chapitres: f.chapitres.value,
+      // on ne garde que les images des chapitres encore présents
+      imagesChapitres: Object.fromEntries(titresChapitres().filter((t) => imagesEdition[t]).map((t) => [t, imagesEdition[t]])),
       ...v,
     };
     const bouton = $("#envoyer");
@@ -200,9 +339,10 @@ function brancherFormulaire() {
       reinitialiserFormulaire();
       retour.innerHTML = message(texte, "ok");
       // Un ancien code du serveur ne connaît pas les chapitres et les ignore sans rien dire
-      if (donnees.chapitres.trim() && !enregistree.chapitres) {
+      const imagesPerdues = Object.keys(donnees.imagesChapitres).length && !enregistree.imagesChapitres;
+      if ((donnees.chapitres.trim() && !enregistree.chapitres) || imagesPerdues) {
         retour.innerHTML += message(
-          "⚠️ Le serveur n'a pas enregistré les chapitres : son code n'est pas à jour. Recolle worker/worker.js dans Cloudflare (Edit code → Deploy), puis modifie à nouveau cette rediff.",
+          "⚠️ Le serveur n'a pas enregistré les chapitres ou leurs images : son code n'est pas à jour. Recolle worker/worker.js dans Cloudflare (Edit code → Deploy), puis modifie à nouveau cette rediff.",
           "erreur"
         );
       }
@@ -261,6 +401,7 @@ async function rafraichirListe() {
       f.categorie.value = r.categorie || "";
       f.description.value = r.description || "";
       f.chapitres.value = r.chapitres || "";
+      imagesEdition = { ...(r.imagesChapitres || {}) };
       compterChapitres();
       afficherApercu(f.lien.value);
       $("#titre-formulaire").textContent = "Modifier la rediff";

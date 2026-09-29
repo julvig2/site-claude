@@ -281,15 +281,79 @@ function formaterTemps(sec) {
   return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
+// "8:41:59", "8h41", "3h20m", "2h 30", "45min" -> secondes (0 si non reconnu)
+function dureeEnSecondes(duree) {
+  const t = String(duree || "").trim().toLowerCase();
+  let m = t.match(/^(\d+):(\d{1,2}):(\d{2})$/);
+  if (m) return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+  m = t.match(/^(\d+):(\d{2})$/); // "3:20" = 3 h 20 pour un stream
+  if (m) return Number(m[1]) * 3600 + Number(m[2]) * 60;
+  m = t.match(/^(?:(\d+)\s*h)?\s*(?:(\d+)\s*(?:m|min|mn)?)?\s*(?:(\d+)\s*s)?$/);
+  if (m && (m[1] || m[2] || m[3])) return Number(m[1] || 0) * 3600 + Number(m[2] || 0) * 60 + Number(m[3] || 0);
+  return 0;
+}
+
+// Même titre = même couleur (un jeu garde sa couleur d'un stream à l'autre)
+const COULEURS_CHAPITRES = ["#7a7a8c", "#7fb08a", "#c2a15a", "#c97a8e", "#6f8fc9", "#9a7bc9", "#5fb3b3", "#c98a5f", "#8fae5a", "#b86fb0"];
+function couleurChapitre(titre) {
+  let h = 0;
+  for (const c of String(titre).toLowerCase()) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return COULEURS_CHAPITRES[h % COULEURS_CHAPITRES.length];
+}
+
 function blocChapitres(redif) {
   const chapitres = analyserChapitres(redif.chapitres);
   if (!chapitres.length || !["youtube", "twitch"].includes(redif.source)) return "";
+
+  // Durée totale : celle de la rediff, sinon on estime la longueur du dernier chapitre
+  const dernier = chapitres[chapitres.length - 1].sec;
+  let total = dureeEnSecondes(redif.duree);
+  const dureeConnue = total > dernier;
+  if (!dureeConnue) total = dernier + Math.max(dernier / Math.max(chapitres.length - 1, 1), 600);
+
+  const images = redif.imagesChapitres || {};
+  // Couleur par titre, mais deux chapitres voisins différents n'ont jamais la même couleur
+  const couleurs = {};
+  let precedente = null;
+  for (const c of chapitres) {
+    if (!couleurs[c.titre]) {
+      let i = COULEURS_CHAPITRES.indexOf(couleurChapitre(c.titre));
+      while (COULEURS_CHAPITRES[i] === precedente) i = (i + 1) % COULEURS_CHAPITRES.length;
+      couleurs[c.titre] = COULEURS_CHAPITRES[i];
+    }
+    precedente = couleurs[c.titre];
+  }
+  const segments = chapitres.map((c, i) => {
+    const fin = i < chapitres.length - 1 ? chapitres[i + 1].sec : total;
+    return { ...c, part: Math.max(fin - c.sec, 0) / total, image: images[c.titre], couleur: couleurs[c.titre] };
+  });
+  const etiquette = (c) => `${formaterTemps(c.sec)} · ${echapper(c.titre)}`;
+  const image = (c, classe) =>
+    c.image ? `<img class="${classe}" src="${echapper(c.image)}" alt="" loading="lazy" onerror="this.remove()">` : "";
+
   return `
     <div class="chapitres">
       <h2>Chapitres</h2>
-      <ol>${chapitres
-        .map((c) => `<li><button class="chapitre" data-sec="${c.sec}"><span class="temps">${formaterTemps(c.sec)}</span>${echapper(c.titre)}</button></li>`)
-        .join("")}</ol>
+      <div class="frise">
+        ${chapitres[0].sec > 0 ? `<span class="segment segment-vide" style="flex-grow:${chapitres[0].sec / total}"></span>` : ""}
+        ${segments
+          .map(
+            (c) => `<button class="segment" data-sec="${c.sec}" style="flex-grow:${c.part};--c:${c.couleur}" title="${etiquette(c)}">
+              ${c.part >= 0.06 ? image(c, "segment-image") : ""}<span>${etiquette(c)}</span></button>`
+          )
+          .join("")}
+      </div>
+      <div class="frise-bornes"><span>0:00</span><span>${dureeConnue ? formaterTemps(total) : ""}</span></div>
+      <div class="cartes-chapitres">
+        ${segments
+          .map(
+            (c) => `<button class="carte-chapitre" data-sec="${c.sec}" style="--c:${c.couleur}">
+              <span class="vignette"><span class="initiale">${echapper(c.titre.charAt(0).toUpperCase())}</span>${image(c, "")}</span>
+              <span class="carte-chapitre-texte"><span class="temps">${formaterTemps(c.sec)}</span>${echapper(c.titre)}</span>
+            </button>`
+          )
+          .join("")}
+      </div>
     </div>`;
 }
 

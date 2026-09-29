@@ -16,6 +16,8 @@
  *   GET    /infos           cartes de la section Info (null si jamais modifiées)
  *   PUT    /infos           remplace toutes les cartes Info (admin)
  *   GET    /live?kick=...   est-ce que la chaîne Kick est en live ?
+ *   GET    /images/:id      une image envoyée depuis l'espace admin
+ *   POST   /images          envoie une image (admin) -> { url }
  *   GET    /reactions/:id   likes + commentaires d'une rediff
  *   POST   /likes/:id       ajoute / retire son like (connecté)
  *   POST   /commentaires/:id          ajoute un commentaire (connecté)
@@ -25,6 +27,9 @@
 const CLE = "redifs";
 const CHAMPS = ["titre", "date", "duree", "categorie", "source", "video", "description", "chapitres"];
 const LIMITES = { titre: 200, date: 10, duree: 20, categorie: 60, source: 10, video: 40, description: 5000, chapitres: 5000 };
+const MAX_IMAGES_CHAPITRES = 100;
+const TYPES_IMAGE = ["image/jpeg", "image/png", "image/webp"];
+const MAX_IMAGE = 500 * 1024; // 500 Ko (l'espace admin redimensionne avant d'envoyer)
 const MAX_COMMENTAIRE = 500; // caractères
 const MAX_COMMENTAIRES = 1000; // par rediff
 const DELAI_COMMENTAIRE = 15; // secondes minimum entre deux commentaires d'un même compte
@@ -87,6 +92,17 @@ function nettoyer(entree) {
   if (r.source === "youtube" && !/^[\w-]{11}$/.test(r.video)) return { erreur: "Identifiant YouTube invalide." };
   if (r.source === "twitch" && !/^\d{5,15}$/.test(r.video)) return { erreur: "Identifiant de VOD Twitch invalide." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date)) r.date = new Date().toISOString().slice(0, 10);
+
+  // Images des chapitres : { "Titre du chapitre": "https://..." }
+  r.imagesChapitres = {};
+  const images = entree?.imagesChapitres;
+  if (images && typeof images === "object" && !Array.isArray(images)) {
+    for (const [titre, lien] of Object.entries(images).slice(0, MAX_IMAGES_CHAPITRES)) {
+      if (typeof lien === "string" && lien.length <= 500 && /^https:\/\/[^\s"'<>]+$/i.test(lien)) {
+        r.imagesChapitres[String(titre).slice(0, 200)] = lien;
+      }
+    }
+  }
   return { redif: r };
 }
 
@@ -166,6 +182,14 @@ export default {
 
       if (requete.method === "GET" && ressource === "infos" && !id) {
         return json(await env.REDIFS.get("infos", "json"), 200, { "Cache-Control": "no-store" });
+      }
+
+      if (requete.method === "GET" && ressource === "images" && id) {
+        const { value, metadata } = await env.REDIFS.getWithMetadata(`img:${id}`, "arrayBuffer");
+        if (!value) return erreur("Image introuvable.", 404);
+        return new Response(value, {
+          headers: { "Content-Type": metadata?.type || "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable", ...CORS },
+        });
       }
 
       if (requete.method === "GET" && ressource === "live") {
@@ -254,6 +278,16 @@ export default {
         if (!rep.ok) return erreur("Vidéo introuvable ou privée.", 404);
         const infos = await rep.json();
         return json({ titre: infos.title || "" });
+      }
+
+      if (requete.method === "POST" && ressource === "images" && !id) {
+        const type = (requete.headers.get("Content-Type") || "").split(";")[0].trim();
+        if (!TYPES_IMAGE.includes(type)) return erreur("Format d'image non accepté (JPG, PNG ou WebP).", 400);
+        const donnees = await requete.arrayBuffer();
+        if (!donnees.byteLength || donnees.byteLength > MAX_IMAGE) return erreur("Image trop lourde (500 Ko maximum).", 400);
+        const nouvelle = crypto.randomUUID().replace(/-/g, "");
+        await env.REDIFS.put(`img:${nouvelle}`, donnees, { metadata: { type } });
+        return json({ url: `${url.origin}/images/${nouvelle}` }, 201);
       }
 
       if (requete.method === "PUT" && ressource === "infos" && !id) {
