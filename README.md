@@ -18,6 +18,7 @@ Il n'y a rien à installer : ce sont juste des fichiers HTML, CSS et JavaScript.
 **Tout se passe dans `assets/js/contenu.js`.** Tu peux y changer :
 
 - ton pseudo, ton slogan et ta chaîne Twitch (pour le bouton « Le live ») ;
+- ton lien de dons (bouton « Soutenir ») et ton invitation Discord (bloc « La commu » de l'accueil) ;
 - tes réseaux sociaux ;
 - la liste des rediffs ;
 - la section « Le reste » ;

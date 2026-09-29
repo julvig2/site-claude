@@ -18,16 +18,21 @@
  */
 
 const SITE = {
-  nom: "MonPseudo",
+  nom: "Julvig",
   slogan: "Toutes mes rediffs de stream, mes clips et le reste.",
   // Chaîne Twitch pour le bouton "En direct" (laisse vide "" pour le cacher)
-  chaineTwitch: "monpseudo",
+  chaineTwitch: "julvig2",
+  // Lien pour les dons (bouton "Soutenir"). Laisse vide "" pour le cacher.
+  don: "https://ko-fi.com/julvig",
+  // Invitation au Discord de la commu (grand bloc sur l'accueil). Laisse vide "" pour le cacher.
+  discord: "https://discord.com/invite/kV82XWFFbA",
 
   reseaux: [
-    { nom: "Twitch", url: "https://twitch.tv/monpseudo" },
-    { nom: "YouTube", url: "https://youtube.com/@monpseudo" },
-    { nom: "Discord", url: "https://discord.gg/xxxxx" },
-    { nom: "X", url: "https://x.com/monpseudo" },
+    { nom: "Twitch", url: "https://www.twitch.tv/julvig2" },
+    { nom: "YouTube", url: "https://www.youtube.com/@julvig3" },
+    { nom: "Kick", url: "https://kick.com/julvig" },
+    { nom: "Discord", url: "https://discord.com/invite/kV82XWFFbA" },
+    { nom: "Ko-fi", url: "https://ko-fi.com/julvig" },
   ],
 
   redifs: [
@@ -70,7 +75,7 @@ const SITE = {
       titre: "Meilleurs moments de septembre",
       type: "Clip",
       description: "Le best-of du mois.",
-      lien: "https://youtube.com/",
+      lien: "https://www.youtube.com/@julvig3",
     },
     {
       titre: "Mon setup",

@@ -58,6 +58,8 @@ h1, h2, h3 { line-height: 1.2; margin: 0 0 .4em; }
 .nav a:hover, .nav a[aria-current="page"] { color: var(--texte); background: var(--fond-3); }
 .nav .btn-direct { color: #fff; background: #e91916; margin-left: 8px; display: inline-flex; align-items: center; gap: 6px; }
 .nav .btn-direct:hover { background: #c41210; }
+.nav .btn-don { color: #fff; background: #29abe0; margin-left: 8px; }
+.nav .btn-don:hover { background: #1f93c2; color: #fff; }
 .point { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: pulse 1.6s infinite; }
 @keyframes pulse { 50% { opacity: .3; } }
 .burger { display: none; background: none; border: 0; color: var(--texte); font-size: 1.5rem; cursor: pointer; }
@@ -70,7 +72,7 @@ h1, h2, h3 { line-height: 1.2; margin: 0 0 .4em; }
     background: var(--fond-2); border-bottom: 1px solid var(--bord);
   }
   .menu-ouvert .nav { display: flex; }
-  .nav .btn-direct { margin: 8px 0 0; justify-content: center; }
+  .nav .btn-direct, .nav .btn-don { margin: 8px 0 0; justify-content: center; text-align: center; }
 }
 
 /* ---------- Boutons ---------- */
@@ -144,6 +146,21 @@ h1, h2, h3 { line-height: 1.2; margin: 0 0 .4em; }
 /* ---------- Page vidéo ---------- */
 #video h1 { font-size: 1.6rem; margin-top: 20px; }
 #video .description { color: var(--texte-2); white-space: pre-line; max-width: 800px; }
+
+/* ---------- La commu ---------- */
+.bloc-commu {
+  display: flex; flex-direction: column; padding: 22px; border-radius: var(--rayon);
+  background: var(--fond-2); border: 1px solid var(--bord); border-top: 3px solid var(--c, var(--accent));
+}
+.bloc-commu p { color: var(--texte-2); margin: 0 0 16px; flex: 1; }
+.bloc-commu .boutons { display: flex; flex-wrap: wrap; gap: 10px; }
+.bloc-live { --c: #9146ff; }
+.bloc-discord { --c: #5865f2; }
+.bloc-don { --c: #29abe0; }
+.btn-twitch { background: #9146ff; }
+.btn-kick { background: #53fc18; color: #0b0b0b; }
+.btn-discord { background: #5865f2; }
+.btn-kofi { background: #29abe0; }
 
 /* ---------- Le reste ---------- */
 .grille-autres { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }

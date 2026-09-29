@@ -78,11 +78,14 @@ function entete(page) {
   const direct = SITE.chaineTwitch
     ? `<a class="btn-direct" href="https://twitch.tv/${encodeURIComponent(SITE.chaineTwitch)}" target="_blank" rel="noopener"><span class="point"></span>Le live</a>`
     : "";
+  const don = SITE.don
+    ? `<a class="btn-don" href="${echapper(SITE.don)}" target="_blank" rel="noopener">♥ Soutenir</a>`
+    : "";
   return `
     <div class="conteneur entete-inner">
       <a class="logo" href="index.html">${echapper(SITE.nom)}</a>
       <button class="burger" aria-label="Menu" aria-expanded="false">☰</button>
-      <nav class="nav">${nav}${direct}</nav>
+      <nav class="nav">${nav}${don}${direct}</nav>
     </div>`;
 }
 
@@ -121,6 +124,43 @@ function pageAccueil() {
 
   $("#recentes").innerHTML = liste.slice(1, 7).map(carte).join("") || `<p class="vide">Rien d'autre pour l'instant.</p>`;
   $("#apercu-autres").innerHTML = SITE.autres.slice(0, 3).map(carteAutre).join("");
+  $("#commu").innerHTML = blocsCommu();
+}
+
+function lienReseau(nom) {
+  return SITE.reseaux.find((r) => r.nom.toLowerCase() === nom.toLowerCase())?.url;
+}
+
+function blocsCommu() {
+  const blocs = [];
+  const lives = ["Twitch", "Kick"].filter(lienReseau);
+  if (lives.length) {
+    blocs.push(`
+      <div class="bloc-commu bloc-live">
+        <h3>Me voir en live</h3>
+        <p>Viens discuter en direct pendant les streams.</p>
+        <div class="boutons">${lives
+          .map((n) => `<a class="btn btn-${n.toLowerCase()}" href="${echapper(lienReseau(n))}" target="_blank" rel="noopener">${n}</a>`)
+          .join("")}</div>
+      </div>`);
+  }
+  if (SITE.discord) {
+    blocs.push(`
+      <div class="bloc-commu bloc-discord">
+        <h3>Rejoins le Discord</h3>
+        <p>La commu, les annonces de stream et les discussions entre deux lives.</p>
+        <div class="boutons"><a class="btn btn-discord" href="${echapper(SITE.discord)}" target="_blank" rel="noopener">Rejoindre le serveur</a></div>
+      </div>`);
+  }
+  if (SITE.don) {
+    blocs.push(`
+      <div class="bloc-commu bloc-don">
+        <h3>Soutenir la chaîne</h3>
+        <p>Un petit don aide à améliorer les streams. Merci, c'est pas obligé du tout !</p>
+        <div class="boutons"><a class="btn btn-kofi" href="${echapper(SITE.don)}" target="_blank" rel="noopener">Faire un don</a></div>
+      </div>`);
+  }
+  return blocs.join("");
 }
 
 function pageRedifs() {
