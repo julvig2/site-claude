@@ -258,13 +258,20 @@ function pageVideo() {
 
 /* ---------- Chapitres ---------- */
 
-// "0:00 Début", "45:12 - Boss final", "1:02:03 Fou rire" -> [{ sec, titre }]
+// Un chapitre par ligne, avec le moment n'importe où dans la ligne :
+// "0:00 Début", "45:12 - Boss final", "[1:02:03] Fou rire", "Boss final (45:12)" -> [{ sec, titre }]
 function analyserChapitres(texte) {
-  return String(texte || "")
-    .split("\n")
-    .map((ligne) => ligne.match(/^\s*(?:(\d+):)?(\d{1,2}):(\d{2})\s*[-–—:|]?\s*(.+?)\s*$/))
-    .filter(Boolean)
-    .map((m) => ({ sec: Number(m[1] || 0) * 3600 + Number(m[2]) * 60 + Number(m[3]), titre: m[4] }));
+  const chapitres = [];
+  for (const ligne of String(texte || "").split("\n")) {
+    const m = ligne.match(/[[(]?\b(?:(\d{1,2}):)?(\d{1,3}):(\d{2})\b[\])]?/);
+    if (!m) continue;
+    const sec = Number(m[1] || 0) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+    const titre = `${ligne.slice(0, m.index)} ${ligne.slice(m.index + m[0].length)}`
+      .replace(/^[\s\-–—:|•·*]+|[\s\-–—:|•·*]+$/g, "")
+      .trim();
+    chapitres.push({ sec, titre: titre || `Chapitre ${chapitres.length + 1}` });
+  }
+  return chapitres.sort((a, b) => a.sec - b.sec);
 }
 
 function formaterTemps(sec) {

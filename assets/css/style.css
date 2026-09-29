@@ -189,6 +189,8 @@ button.btn:disabled { opacity: .5; cursor: wait; }
 .formulaire h2 { margin: 0; }
 .formulaire label { display: grid; gap: 6px; font-weight: 600; font-size: .95rem; }
 .formulaire small { color: var(--texte-2); font-weight: 400; }
+.formulaire small .ok { color: #a5d6a7; }
+.formulaire small .ko { color: #ff8a80; }
 .formulaire input, .formulaire textarea {
   font: inherit; font-weight: 400; padding: 10px 12px; border-radius: 10px;
   background: var(--fond); border: 1px solid var(--bord); color: var(--texte); width: 100%;

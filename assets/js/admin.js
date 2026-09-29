@@ -79,7 +79,8 @@ async function afficherAdmin(avertissement = "") {
       <label>Description<textarea name="description" rows="4" maxlength="5000"></textarea></label>
       <label>Chapitres (facultatif)
         <textarea name="chapitres" rows="5" maxlength="5000" placeholder="0:00 Début du stream&#10;12:30 On lance la partie&#10;1:45:10 Le boss final"></textarea>
-        <small>Un chapitre par ligne : le moment, puis le titre. Sur le site, cliquer sur un chapitre fait sauter la vidéo à ce moment.</small>
+        <small>Un chapitre par ligne : le moment, puis le titre. Sur le site, ils s'affichent sous la vidéo : un clic fait sauter la vidéo à ce moment.</small>
+        <small id="nb-chapitres"></small>
       </label>
       <div id="retour-formulaire"></div>
       <div class="boutons">
@@ -128,6 +129,7 @@ function reinitialiserFormulaire() {
   $("#envoyer").textContent = "Publier";
   $("#annuler").hidden = true;
   $("#apercu-video").innerHTML = "";
+  $("#nb-chapitres").innerHTML = "";
 }
 
 function afficherApercu(lien) {
@@ -140,6 +142,16 @@ function afficherApercu(lien) {
       ? `<img class="apercu-miniature" src="https://i.ytimg.com/vi/${v.video}/mqdefault.jpg" alt="">`
       : message("VOD Twitch reconnue.", "ok");
   return v;
+}
+
+function compterChapitres() {
+  const texte = $("#formulaire").chapitres.value;
+  const n = analyserChapitres(texte).length; // défini dans main.js
+  $("#nb-chapitres").innerHTML = !texte.trim()
+    ? ""
+    : n
+      ? `<span class="ok">✔ ${n} chapitre${n > 1 ? "s" : ""} reconnu${n > 1 ? "s" : ""}</span>`
+      : `<span class="ko">Aucun chapitre reconnu : mets un moment comme 12:30 sur chaque ligne.</span>`;
 }
 
 function brancherFormulaire() {
@@ -158,6 +170,8 @@ function brancherFormulaire() {
       }
     }
   });
+
+  f.chapitres.addEventListener("input", compterChapitres);
 
   $("#annuler").onclick = reinitialiserFormulaire;
 
@@ -179,14 +193,19 @@ function brancherFormulaire() {
     const bouton = $("#envoyer");
     bouton.disabled = true;
     try {
-      if (enEdition) {
-        await appelApi(`/redifs/${encodeURIComponent(enEdition)}`, { method: "PUT", body: JSON.stringify(donnees) });
-      } else {
-        await appelApi("/redifs", { method: "POST", body: JSON.stringify(donnees) });
-      }
+      const enregistree = enEdition
+        ? await appelApi(`/redifs/${encodeURIComponent(enEdition)}`, { method: "PUT", body: JSON.stringify(donnees) })
+        : await appelApi("/redifs", { method: "POST", body: JSON.stringify(donnees) });
       const texte = enEdition ? "Rediff modifiée !" : "Rediff publiée ! Elle est déjà visible sur le site.";
       reinitialiserFormulaire();
       retour.innerHTML = message(texte, "ok");
+      // Un ancien code du serveur ne connaît pas les chapitres et les ignore sans rien dire
+      if (donnees.chapitres.trim() && !enregistree.chapitres) {
+        retour.innerHTML += message(
+          "⚠️ Le serveur n'a pas enregistré les chapitres : son code n'est pas à jour. Recolle worker/worker.js dans Cloudflare (Edit code → Deploy), puis modifie à nouveau cette rediff.",
+          "erreur"
+        );
+      }
       await rafraichirListe();
     } catch (err) {
       if (err.statut === 401) return afficherAdmin("Ta connexion a expiré, reconnecte-toi.");
@@ -242,6 +261,7 @@ async function rafraichirListe() {
       f.categorie.value = r.categorie || "";
       f.description.value = r.description || "";
       f.chapitres.value = r.chapitres || "";
+      compterChapitres();
       afficherApercu(f.lien.value);
       $("#titre-formulaire").textContent = "Modifier la rediff";
       $("#envoyer").textContent = "Enregistrer";
