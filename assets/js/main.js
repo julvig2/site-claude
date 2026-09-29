@@ -76,10 +76,10 @@ function entete(page) {
     .map(([cle, href, txt]) => `<a href="${href}"${cle === page ? ' aria-current="page"' : ""}>${txt}</a>`)
     .join("");
   const direct = SITE.chaineTwitch
-    ? `<a class="btn-direct" href="https://twitch.tv/${encodeURIComponent(SITE.chaineTwitch)}" target="_blank" rel="noopener"><span class="point"></span>Le live</a>`
+    ? `<a class="btn-direct hors-ligne" href="https://twitch.tv/${encodeURIComponent(SITE.chaineTwitch)}" target="_blank" rel="noopener"><span class="point"></span><span class="etat-live">Live OFF</span></a>`
     : "";
   const don = SITE.don
-    ? `<a class="btn-don" href="${echapper(SITE.don)}" target="_blank" rel="noopener">♥ Soutenir</a>`
+    ? `<a class="btn-don" href="soutenir.html"${page === "soutenir" ? ' aria-current="page"' : ""}>♥ Soutenir</a>`
     : "";
   return `
     <div class="conteneur entete-inner">
@@ -157,7 +157,7 @@ function blocsCommu() {
       <div class="bloc-commu bloc-don">
         <h3>Soutenir la chaîne</h3>
         <p>Un petit don aide à améliorer les streams. Merci, c'est pas obligé du tout !</p>
-        <div class="boutons"><a class="btn btn-kofi" href="${echapper(SITE.don)}" target="_blank" rel="noopener">Faire un don</a></div>
+        <div class="boutons"><a class="btn btn-kofi" href="soutenir.html">Faire un don</a></div>
       </div>`);
   }
   return blocs.join("");
@@ -235,6 +235,62 @@ function pageAPropos() {
     .join("");
 }
 
+function pageSoutenir() {
+  // Ko-fi fournit un panneau de don à intégrer : le paiement (carte, PayPal) se fait
+  // directement sur la page, de façon sécurisée par Ko-fi.
+  const pseudoKofi = (SITE.don.match(/ko-fi\.com\/([^/?#]+)/i) || [])[1];
+  if (!pseudoKofi) {
+    $("#panneau-don").innerHTML = `<p class="vide">Aucun lien Ko-fi configuré dans contenu.js.</p>`;
+    return;
+  }
+  $("#panneau-don").innerHTML = `
+    <iframe id="kofiframe" src="https://ko-fi.com/${encodeURIComponent(pseudoKofi)}/?hidefeed=true&widget=true&embed=true&preview=true"
+      title="Faire un don à ${echapper(SITE.nom)} sur Ko-fi"></iframe>
+    <p class="meta">Le panneau ne s'affiche pas ? <a href="${echapper(SITE.don)}" target="_blank" rel="noopener">Ouvrir ma page Ko-fi</a></p>`;
+}
+
+/* ---------- Statut du live (Twitch) ---------- */
+
+// DecAPI renvoie la durée du live en cours ("1 hour, 5 minutes")
+// ou "<chaîne> is offline" quand il n'y a pas de live. Pas besoin de clé d'API.
+async function verifierLive() {
+  if (!SITE.chaineTwitch) return;
+  let enLive = false;
+  try {
+    const rep = await fetch(`https://decapi.me/twitch/uptime/${encodeURIComponent(SITE.chaineTwitch)}`, { cache: "no-store" });
+    const texte = rep.ok ? await rep.text() : "";
+    enLive = /\d+\s*(second|minute|hour|day)/i.test(texte) && !/offline/i.test(texte);
+  } catch {
+    // Service injoignable : on laisse le bouton sur OFF.
+  }
+  afficherLive(enLive);
+}
+
+function afficherLive(enLive) {
+  document.querySelectorAll(".btn-direct").forEach((b) => {
+    b.classList.toggle("hors-ligne", !enLive);
+    b.querySelector(".etat-live").textContent = enLive ? "EN LIVE" : "Live OFF";
+    b.title = enLive ? "Je suis en live, viens !" : "Pas de live en ce moment";
+  });
+  const bandeau = $("#bandeau-live");
+  if (!bandeau) return;
+  if (enLive && !bandeau.dataset.affiche) {
+    bandeau.dataset.affiche = "1";
+    bandeau.hidden = false;
+    bandeau.innerHTML = `
+      <div class="conteneur">
+        <div class="section-titre"><h2><span class="point point-rouge"></span> En live maintenant</h2>
+          <a href="https://twitch.tv/${encodeURIComponent(SITE.chaineTwitch)}" target="_blank" rel="noopener">Ouvrir sur Twitch →</a></div>
+        <div class="lecteur"><iframe src="https://player.twitch.tv/?channel=${encodeURIComponent(SITE.chaineTwitch)}&parent=${location.hostname || "localhost"}&muted=true"
+          title="Live de ${echapper(SITE.nom)}" allowfullscreen></iframe></div>
+      </div>`;
+  } else if (!enLive && bandeau.dataset.affiche) {
+    delete bandeau.dataset.affiche;
+    bandeau.hidden = true;
+    bandeau.innerHTML = "";
+  }
+}
+
 /* ---------- Démarrage ---------- */
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -255,5 +311,9 @@ document.addEventListener("DOMContentLoaded", () => {
     video: pageVideo,
     autres: pageAutres,
     "a-propos": pageAPropos,
+    soutenir: pageSoutenir,
   })[page]?.();
+
+  verifierLive();
+  setInterval(verifierLive, 2 * 60 * 1000); // re-vérifie toutes les 2 minutes
 });

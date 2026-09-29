@@ -59,7 +59,11 @@ h1, h2, h3 { line-height: 1.2; margin: 0 0 .4em; }
 .nav .btn-direct { color: #fff; background: #e91916; margin-left: 8px; display: inline-flex; align-items: center; gap: 6px; }
 .nav .btn-direct:hover { background: #c41210; }
 .nav .btn-don { color: #fff; background: #29abe0; margin-left: 8px; }
-.nav .btn-don:hover { background: #1f93c2; color: #fff; }
+.nav .btn-don:hover, .nav .btn-don[aria-current="page"] { background: #1f93c2; color: #fff; }
+.nav .btn-direct.hors-ligne { background: var(--fond-3); color: var(--texte-2); }
+.nav .btn-direct.hors-ligne:hover { background: var(--bord); color: var(--texte); }
+.hors-ligne .point { background: #6b6b7b; animation: none; }
+.point.point-rouge { display: inline-block; background: #e91916; vertical-align: middle; width: 12px; height: 12px; }
 .point { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: pulse 1.6s infinite; }
 @keyframes pulse { 50% { opacity: .3; } }
 .burger { display: none; background: none; border: 0; color: var(--texte); font-size: 1.5rem; cursor: pointer; }
@@ -161,6 +165,16 @@ h1, h2, h3 { line-height: 1.2; margin: 0 0 .4em; }
 .btn-kick { background: #53fc18; color: #0b0b0b; }
 .btn-discord { background: #5865f2; }
 .btn-kofi { background: #29abe0; }
+
+/* ---------- Bandeau live (accueil) ---------- */
+#bandeau-live { padding-top: 32px; }
+
+/* ---------- Page Soutenir ---------- */
+.soutenir { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; }
+.soutenir p { color: var(--texte-2); }
+.soutenir ul { color: var(--texte-2); padding-left: 20px; }
+#kofiframe { width: 100%; height: 712px; border: 0; border-radius: var(--rayon); background: #f9f9f9; }
+@media (max-width: 860px) { .soutenir { grid-template-columns: 1fr; } }
 
 /* ---------- Le reste ---------- */
 .grille-autres { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }

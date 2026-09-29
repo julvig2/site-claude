@@ -12,6 +12,7 @@ Il n'y a rien à installer : ce sont juste des fichiers HTML, CSS et JavaScript.
 | `video.html?id=...` | Le lecteur d'une rediff, avec des suggestions en dessous |
 | `autres.html` | « Le reste » : clips, projets, planning… |
 | `a-propos.html` | Présentation et liens vers les réseaux |
+| `soutenir.html` | Page de dons avec le panneau Ko-fi intégré (carte bancaire ou PayPal) |
 
 ## Modifier le contenu
 
@@ -50,6 +51,10 @@ Tu peux ajouter `miniature: "assets/img/mon-image.jpg"` pour choisir l'image aff
 ### Changer les couleurs
 
 En haut de `assets/css/style.css`, modifie `--accent` et `--accent-2`.
+
+## Bouton « Live »
+
+Le bouton du menu affiche **Live OFF** (gris) quand tu ne streames pas et **EN LIVE** (rouge) quand tu es en live sur Twitch. Pendant un live, ton stream s'affiche aussi en haut de l'accueil. Le statut est vérifié toutes les 2 minutes grâce au service gratuit [DecAPI](https://decapi.me), sans clé d'API.
 
 ## Mettre le site en ligne (gratuit, avec GitHub Pages)
 
