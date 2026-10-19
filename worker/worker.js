@@ -54,7 +54,7 @@
  */
 
 // Augmente à chaque nouvelle version : l'Administration prévient si Cloudflare a un ancien code.
-const VERSION_SERVEUR = 8;
+const VERSION_SERVEUR = 9;
 
 const CLE = "redifs";
 const CHAMPS = ["titre", "date", "duree", "categorie", "source", "video", "description", "chapitres"];
@@ -440,6 +440,7 @@ const TYPES_ACTIONS_BOT = [
   "compteur_creer",
   "roles_publier", "roles_supprimer",
   "live_test",
+  "rediff_test", "sauvegarde_maintenant",
 ];
 const MAX_ACTIONS_BOT = 50;
 const MAX_ACTIONS_EN_ATTENTE = 20;
@@ -608,6 +609,100 @@ function nettoyerConfigBot(e) {
     if (messageLive.length > 500) return { erreur: "Notifications de live : message de 500 caractères maximum." };
     c.liveNotif = { channelId: salon.valeur, mention, twitch, kick, message: messageLive };
   }
+
+  // Automod
+  c.automod = null;
+  if (e.automod && typeof e.automod === "object" && !Array.isArray(e.automod)) {
+    const a = e.automod;
+    const entier = (v, min, max, defaut) => {
+      const n = Number(v);
+      return Number.isInteger(n) && n >= min && n <= max ? n : defaut === undefined ? NaN : defaut;
+    };
+    const domaines = [];
+    for (const brut of Array.isArray(a.allowedDomains) ? a.allowedDomains : []) {
+      const d = String(brut).trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
+      if (!d) continue;
+      if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d)) return { erreur: `Automod : domaine autorisé invalide (« ${d} »).` };
+      if (!domaines.includes(d)) domaines.push(d);
+    }
+    if (domaines.length > 50) return { erreur: "Automod : 50 domaines autorisés maximum." };
+    const mots = [];
+    for (const brut of Array.isArray(a.badWords) ? a.badWords : []) {
+      const m = String(brut).trim();
+      if (!m) continue;
+      if (m.length > 50) return { erreur: `Automod : mot interdit trop long (50 caractères maximum) : « ${m.slice(0, 20)}… ».` };
+      if (!mots.includes(m)) mots.push(m);
+    }
+    if (mots.length > 200) return { erreur: "Automod : 200 mots interdits maximum." };
+    const maxMentions = entier(a.maxMentions ?? 0, 0, 50);
+    if (Number.isNaN(maxMentions)) return { erreur: "Automod : nombre maximum de mentions entre 0 et 50." };
+    const action = ["supprimer", "avertir", "mute"].includes(a.action) ? a.action : null;
+    if (!action) return { erreur: "Automod : action invalide (supprimer, avertir ou mute)." };
+    const muteMinutes = entier(a.muteMinutes ?? 10, 1, 1440);
+    if (Number.isNaN(muteMinutes)) return { erreur: "Automod : durée du mute entre 1 et 1440 minutes." };
+    const ids = (liste, nom) => {
+      const sortie = [];
+      for (const v of Array.isArray(liste) ? liste.slice(0, 100) : []) {
+        const r = idDiscord(v, nom);
+        if (r.erreur) return r;
+        if (r.valeur && !sortie.includes(r.valeur)) sortie.push(r.valeur);
+      }
+      return { valeur: sortie };
+    };
+    const roles = ids(a.ignoredRoles, "Automod (rôles ignorés)");
+    if (roles.erreur) return roles;
+    const salons = ids(a.ignoredChannels, "Automod (salons ignorés)");
+    if (salons.erreur) return salons;
+    c.automod = {
+      enabled: a.enabled === true,
+      antiInvites: a.antiInvites === true,
+      antiLinks: a.antiLinks === true,
+      allowedDomains: domaines,
+      antiSpam: a.antiSpam === true,
+      maxMentions,
+      badWords: mots,
+      antiCaps: a.antiCaps === true,
+      action,
+      muteMinutes,
+      ignoredRoles: roles.valeur,
+      ignoredChannels: salons.valeur,
+    };
+  }
+
+  // Vocaux temporaires
+  c.tempVoice = null;
+  if (e.tempVoice && typeof e.tempVoice === "object" && !Array.isArray(e.tempVoice)) {
+    const t = e.tempVoice;
+    const createur = idDiscord(t.creatorChannelId, "Vocaux temporaires (salon créateur)");
+    if (createur.erreur) return createur;
+    const categorie = idDiscord(t.categoryId, "Vocaux temporaires (catégorie)");
+    if (categorie.erreur) return categorie;
+    const nameFormat = typeof t.nameFormat === "string" ? t.nameFormat.trim() : "";
+    if (nameFormat.length > 100) return { erreur: "Vocaux temporaires : format du nom de 100 caractères maximum." };
+    const userLimit = Number(t.userLimit ?? 0);
+    if (!Number.isInteger(userLimit) || userLimit < 0 || userLimit > 99) return { erreur: "Vocaux temporaires : limite de places entre 0 (illimité) et 99." };
+    c.tempVoice = { creatorChannelId: createur.valeur, categoryId: categorie.valeur, nameFormat, userLimit };
+  }
+
+  // Annonces de rediffs
+  c.rediffNotif = null;
+  if (e.rediffNotif && typeof e.rediffNotif === "object" && !Array.isArray(e.rediffNotif)) {
+    const r = e.rediffNotif;
+    const salon = idDiscord(r.channelId, "Annonces de rediffs (salon)");
+    if (salon.erreur) return salon;
+    const mention = texte(r.mention, 30);
+    if (mention && !["everyone", "here"].includes(mention) && !ID_DISCORD.test(mention)) return { erreur: "Annonces de rediffs : mention invalide." };
+    const messageRediff = typeof r.message === "string" ? r.message.trim() : "";
+    if (messageRediff.length > 500) return { erreur: "Annonces de rediffs : message de 500 caractères maximum." };
+    const siteUrl = texte(r.siteUrl, 300);
+    if (siteUrl && !lienWeb(siteUrl)) return { erreur: "Annonces de rediffs : l'adresse du site doit commencer par https://" };
+    c.rediffNotif = { channelId: salon.valeur, mention, message: messageRediff, siteUrl };
+  }
+
+  // Salon de la sauvegarde quotidienne
+  const sauvegarde = idDiscord(e.backupChannel, "Salon des sauvegardes");
+  if (sauvegarde.erreur) return sauvegarde;
+  c.backupChannel = sauvegarde.valeur;
 
   c.logs = {};
   if (e.logs && typeof e.logs === "object" && !Array.isArray(e.logs)) {

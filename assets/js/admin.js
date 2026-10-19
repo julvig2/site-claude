@@ -21,7 +21,7 @@ function seDeconnecter() {
 }
 
 // Doit correspondre à VERSION_SERVEUR dans worker/worker.js
-const VERSION_SERVEUR_ATTENDUE = 8;
+const VERSION_SERVEUR_ATTENDUE = 9;
 
 const ONGLETS = [
   ["tableau", "📊 Tableau de bord"],
@@ -800,6 +800,17 @@ function brancherImagesChapitres() {
   });
 }
 
+// Les annonces de rediffs du bot Discord sont-elles activées ? (réglages du site, sinon ceux en vigueur dans le bot)
+async function annoncesRediffsActives() {
+  try {
+    const bot = BOT || (await appelApi("/admin/bot"));
+    const config = bot.config || bot.etat?.config || {};
+    return Boolean(config.rediffNotif?.channelId);
+  } catch {
+    return false; // pas de bot, ou serveur pas à jour : on n'affiche rien
+  }
+}
+
 function brancherFormulaire() {
   const f = $("#formulaire");
   reinitialiserFormulaire();
@@ -846,8 +857,12 @@ function brancherFormulaire() {
         ? await appelApi(`/redifs/${encodeURIComponent(enEdition)}`, { method: "PUT", body: JSON.stringify(donnees) })
         : await appelApi("/redifs", { method: "POST", body: JSON.stringify(donnees) });
       const texte = enEdition ? "Rediff modifiée !" : "Rediff publiée ! Elle est déjà visible sur le site.";
+      const nouvelle = !enEdition;
       reinitialiserFormulaire();
       retour.innerHTML = message(texte, "ok");
+      if (nouvelle && (await annoncesRediffsActives())) {
+        retour.innerHTML += message("🎬 Le bot l'annoncera sur Discord dans moins de 5 min.", "ok");
+      }
       // Un ancien code du serveur ne connaît pas les chapitres et les ignore sans rien dire
       const imagesPerdues = Object.keys(donnees.imagesChapitres).length && !enregistree.imagesChapitres;
       if ((donnees.chapitres.trim() && !enregistree.chapitres) || imagesPerdues) {
@@ -1075,6 +1090,8 @@ const LIBELLES_ACTIONS_BOT = {
   roles_publier: "Publier un panneau de rôles",
   roles_supprimer: "Supprimer un panneau de rôles",
   live_test: "Tester la notification de live",
+  rediff_test: "Tester l'annonce de rediff",
+  sauvegarde_maintenant: "Sauvegarder maintenant",
 };
 
 const ENVOYE_AU_BOT = "Envoyé, le bot l'appliquera dans moins d'une minute.";
@@ -1162,7 +1179,8 @@ function htmlStatutBot() {
   const icone = lienHttps(e.serveur?.icone) ? `<img class="icone-serveur" src="${echapper(e.serveur.icone)}" alt="" onerror="this.remove()">` : "";
   const avatar = lienHttps(e.bot?.avatar) ? `<img class="icone-serveur petite" src="${echapper(e.bot.avatar)}" alt="" onerror="this.remove()">` : "";
   const avertissements = Array.isArray(e.avertissements) ? e.avertissements : [];
-  const botAncien = (Number(e.versionBot) || 1) < 2;
+  const versionBot = Number(e.versionBot) || 1;
+  const botAncien = versionBot < 3;
   return `
     <div class="statut-bot">
       ${icone}
@@ -1175,7 +1193,12 @@ function htmlStatutBot() {
     </div>
     ${
       botAncien
-        ? message("Le bot n'est pas à jour (version 1) : les rôles-réactions, les commandes personnalisées et les notifications de live demandent la version 2 du bot.", "erreur")
+        ? message(
+            `Le bot n'est pas à jour (version ${versionBot}) : ${
+              versionBot < 2 ? "les rôles-réactions, les commandes personnalisées, les notifications de live, " : ""
+            }l'automod, les vocaux temporaires, les annonces de rediffs et les sauvegardes demandent la version 3 du bot.`,
+            "erreur"
+          )
         : ""
     }
     ${
@@ -1773,6 +1796,123 @@ function afficherBot(retour = "") {
       <li><strong>Kick</strong> ${htmlEtatLive("kick", liveKick)}</li>
     </ul>`;
 
+  // 🛡️ Automod (valeurs par défaut du document si rien n'est encore réglé)
+  const am = {
+    enabled: false, antiInvites: true, antiLinks: false,
+    allowedDomains: ["twitch.tv", "youtube.com", "youtu.be", "kick.com", "github.io"],
+    antiSpam: true, maxMentions: 5, badWords: [], antiCaps: false, action: "supprimer", muteMinutes: 10,
+    ignoredRoles: [], ignoredChannels: [],
+    ...(cfg.automod || {}),
+  };
+  const caseAutomod = (nom, libelle, aide) => `<label class="case"><input type="checkbox" name="am-${nom}"${am[nom] ? " checked" : ""}> ${libelle}${
+    aide ? ` <small>${aide}</small>` : ""
+  }</label>`;
+  const listeCases = (nom, elements, coches, prefixe) =>
+    elements.length
+      ? `<div class="liste-cases" data-liste="${nom}">${elements
+          .map(
+            (x) => `<label class="case"><input type="checkbox" value="${echapper(x.id)}"${coches.includes(x.id) ? " checked" : ""}> ${prefixe}${echapper(x.nom)}</label>`
+          )
+          .join("")}</div>`
+      : `<p class="vide">Aucun élément envoyé par le bot.</p>`;
+  const automodHtml = `
+    <label class="interrupteur">
+      <input type="checkbox" name="am-enabled"${am.enabled ? " checked" : ""}>
+      <span class="interrupteur-piste"></span>
+      <span><strong>Automod activé</strong> <small>Interrupteur général. Les membres qui peuvent « Gérer les messages » ne sont jamais filtrés.</small></span>
+    </label>
+    <div class="grille-cases">
+      ${caseAutomod("antiInvites", "Invitations Discord", "(discord.gg, discord.com/invite)")}
+      ${caseAutomod("antiLinks", "Liens", "(sauf domaines autorisés)")}
+      ${caseAutomod("antiSpam", "Spam", "(plus de 5 messages en 5 s)")}
+      ${caseAutomod("antiCaps", "Majuscules", "(plus de 70 %, 12 lettres min.)")}
+    </div>
+    <label id="am-domaines-bloc"${am.antiLinks ? "" : " hidden"}>Domaines autorisés
+      <textarea name="am-allowedDomains" rows="4" placeholder="twitch.tv">${echapper((am.allowedDomains || []).join("\n"))}</textarea>
+      <small>Un par ligne, sans https:// (50 maximum).</small></label>
+    <div class="ligne">
+      <label>Mentions maximum par message<input name="am-maxMentions" type="number" min="0" max="50" value="${Number(am.maxMentions) || 0}">
+        <small>0 = pas de limite.</small></label>
+      <label>Action<select name="am-action">
+        ${[["supprimer", "Supprimer le message"], ["avertir", "Supprimer + avertissement"], ["mute", "Supprimer + mute"]]
+          .map(([v, t]) => `<option value="${v}"${am.action === v ? " selected" : ""}>${t}</option>`)
+          .join("")}
+      </select></label>
+      <label id="am-mute-bloc"${am.action === "mute" ? "" : " hidden"}>Durée du mute (minutes)<input name="am-muteMinutes" type="number" min="1" max="1440" value="${Number(am.muteMinutes) || 10}"></label>
+    </div>
+    <label>Mots interdits
+      <textarea name="am-badWords" rows="4" placeholder="un mot par ligne">${echapper((am.badWords || []).join("\n"))}</textarea>
+      <small>Un par ligne (200 maximum, 50 caractères chacun). Insensible aux majuscules et aux accents, mot entier.</small></label>
+    <div class="ligne ligne-2">
+      <div><strong>Rôles jamais filtrés</strong>${listeCases("am-ignoredRoles", e.roles || [], am.ignoredRoles || [], "@")}</div>
+      <div><strong>Salons jamais filtrés</strong>${listeCases("am-ignoredChannels", salonsBot("texte"), am.ignoredChannels || [], "#")}</div>
+    </div>`;
+
+  // 🔊 Vocaux temporaires
+  const tv = cfg.tempVoice || {};
+  const vocauxHtml = `
+    <p class="astuce">💡 Crée un salon vocal nommé <strong>➕ Créer un salon</strong> sur Discord, puis choisis-le ici.
+      Quand quelqu'un le rejoint, le bot lui crée son propre salon, supprimé dès qu'il est vide.</p>
+    <div class="ligne ligne-2">
+      <label>Salon vocal créateur<select name="tv-creatorChannelId">${optionsSalonsBot("vocal", tv.creatorChannelId || "", "— Aucun (désactivé) —")}</select></label>
+      <label>Catégorie des salons créés<select name="tv-categoryId">${optionsSalonsBot("categories", tv.categoryId || "", "— Même catégorie que le salon créateur —")}</select></label>
+    </div>
+    <div class="ligne ligne-2">
+      <label>Format du nom<input name="tv-nameFormat" maxlength="100" value="${echapper(tv.nameFormat || "")}" placeholder="🔊 Salon de {user}">
+        <small><code>{user}</code> = pseudo sur le serveur, <code>{username}</code> = nom Discord. Le créateur peut ensuite renommer et limiter son salon.</small></label>
+      <label>Limite de places<input name="tv-userLimit" type="number" min="0" max="99" value="${Number(tv.userLimit) || 0}">
+        <small>0 = illimité.</small></label>
+    </div>
+    <p>Vocaux temporaires ouverts en ce moment : <strong>${nombre(Number(e.vocauxTemporaires) || 0)}</strong></p>`;
+
+  // 🎬 Annonces de rediffs
+  const rn = cfg.rediffNotif || {};
+  // Pré-remplie avec l'adresse actuelle du site (seulement si elle est en https, comme sur GitHub Pages)
+  const adresseSite = location.protocol === "https:" ? new URL(".", location.href).href : "";
+  const rediffsHtml = `
+    <div class="ligne ligne-2">
+      <label>Salon des annonces<select name="rn-channelId">${optionsSalonsBot("texte", rn.channelId || "", "— Aucun (désactivé) —")}</select></label>
+      <label>Mention<select name="rn-mention">
+        <option value="">Aucune</option>
+        <option value="everyone"${rn.mention === "everyone" ? " selected" : ""}>@everyone</option>
+        <option value="here"${rn.mention === "here" ? " selected" : ""}>@here</option>
+        ${(e.roles || []).map((r) => `<option value="${echapper(r.id)}"${r.id === rn.mention ? " selected" : ""}>@${echapper(r.nom)}</option>`).join("")}
+      </select></label>
+    </div>
+    <label>Message
+      <textarea name="rn-message" rows="2" maxlength="500" placeholder="🎬 Nouvelle rediff dispo sur le site : **{titre}** !">${echapper(rn.message || "")}</textarea>
+      <small>Variables : <code>{titre}</code>, <code>{lien}</code>, <code>{categorie}</code>, <code>{duree}</code>. 500 caractères maximum.
+        Le bot regarde les nouvelles rediffs toutes les 5 minutes ; celles déjà publiées à son premier démarrage ne sont pas annoncées.</small>
+    </label>
+    <label>Adresse du site<input name="rn-siteUrl" type="url" maxlength="300" value="${echapper(rn.siteUrl || adresseSite)}" placeholder="https://julvig2.github.io/site-claude/">
+      <small>Sert à faire le lien vers la rediff (video.html?id=…).</small></label>
+    <div class="ligne-formulaire">
+      <button type="button" class="btn btn-contour btn-petit" id="bot-rediff-test">Tester</button>
+      <small class="meta">Annonce la rediff la plus récente dans le salon enregistré : enregistre d'abord les réglages si tu viens de les changer.</small>
+    </div>
+    <div id="retour-rediff-test"></div>`;
+
+  // 💾 Sauvegardes
+  const sv = e.sauvegardes || {};
+  const listeSauvegardes = Array.isArray(sv.liste) ? sv.liste : [];
+  const sauvegardesHtml = `
+    <label>Salon des sauvegardes<select name="backupChannel">${optionsSalonsBot("texte", cfg.backupChannel || "", "— Aucun (copie sur le PC seulement) —")}</select></label>
+    ${message("⚠️ Ce salon doit être PRIVÉ, réservé au staff : la sauvegarde contient les sanctions, les tickets, la blacklist…", "erreur")}
+    <p>Dernière sauvegarde : <strong>${sv.derniere ? `${dateBot(sv.derniere)} (${ilYaBot(sv.derniere)})` : "jamais"}</strong>
+      <small class="meta">— une sauvegarde est faite automatiquement chaque jour (14 gardées sur le PC).</small></p>
+    ${
+      listeSauvegardes.length
+        ? `<details class="liste-sauvegardes"><summary>Sauvegardes sur le PC (${listeSauvegardes.length})</summary>
+            <ul>${listeSauvegardes.map((d) => `<li><code>backups/${echapper(d)}</code></li>`).join("")}</ul></details>`
+        : `<p class="vide">Aucune sauvegarde sur le PC pour l'instant.</p>`
+    }
+    <div class="ligne-formulaire">
+      <button type="button" class="btn btn-contour btn-petit" id="bot-sauvegarde">💾 Sauvegarder maintenant</button>
+    </div>
+    <div id="retour-sauvegarde-bot"></div>
+    <p class="astuce">♻️ Pour restaurer : arrête le bot, puis dans le dossier du bot :
+      <code>node scripts/restaurer.js backups/&lt;date&gt;</code> (ou le fichier .json téléchargé depuis Discord).</p>`;
+
   zone.innerHTML = `
     ${entete}
     <form id="form-bot" autocomplete="off">
@@ -1783,6 +1923,10 @@ function afficherBot(retour = "") {
       ${bloc("VIP", vipHtml)}
       ${bloc("✨ Commandes personnalisées", commandesHtml)}
       ${bloc("🔴 Notifications de live", liveHtml)}
+      ${bloc("🛡️ Automod", automodHtml)}
+      ${bloc("🔊 Vocaux temporaires", vocauxHtml)}
+      ${bloc("🎬 Annonces de rediffs", rediffsHtml)}
+      ${bloc("💾 Sauvegardes", sauvegardesHtml)}
       <div class="barre-enregistrer-bot">
         <div id="retour-config-bot"></div>
         <button class="btn" type="submit">Enregistrer les réglages</button>
@@ -1802,6 +1946,8 @@ function afficherBot(retour = "") {
 function lireConfigBot() {
   const f = $("#form-bot");
   const valeur = (nom) => f.querySelector(`[name="${nom}"]`)?.value.trim() || null;
+  const lignes = (nom) => (valeur(nom) || "").split("\n").map((x) => x.trim()).filter(Boolean);
+  const coches = (nom) => [...f.querySelectorAll(`[data-liste="${nom}"] input:checked`)].map((c) => c.value);
   const logs = {};
   f.querySelectorAll("[data-log]").forEach((s) => (logs[s.dataset.log] = s.value || null));
   const categories = [...f.querySelectorAll(".cat-ticket")]
@@ -1834,6 +1980,33 @@ function lireConfigBot() {
         deleteTrigger: l.querySelector('[data-cmd="deleteTrigger"]').checked,
       }))
       .filter((c) => c.name || c.response),
+    automod: {
+      enabled: f.querySelector('[name="am-enabled"]').checked,
+      antiInvites: f.querySelector('[name="am-antiInvites"]').checked,
+      antiLinks: f.querySelector('[name="am-antiLinks"]').checked,
+      allowedDomains: lignes("am-allowedDomains"),
+      antiSpam: f.querySelector('[name="am-antiSpam"]').checked,
+      maxMentions: Number(valeur("am-maxMentions") || 0),
+      badWords: lignes("am-badWords"),
+      antiCaps: f.querySelector('[name="am-antiCaps"]').checked,
+      action: valeur("am-action") || "supprimer",
+      muteMinutes: Number(valeur("am-muteMinutes") || 10),
+      ignoredRoles: coches("am-ignoredRoles"),
+      ignoredChannels: coches("am-ignoredChannels"),
+    },
+    tempVoice: {
+      creatorChannelId: valeur("tv-creatorChannelId"),
+      categoryId: valeur("tv-categoryId"),
+      nameFormat: valeur("tv-nameFormat") || "",
+      userLimit: Number(valeur("tv-userLimit") || 0),
+    },
+    rediffNotif: {
+      channelId: valeur("rn-channelId"),
+      mention: valeur("rn-mention") || "",
+      message: valeur("rn-message") || "",
+      siteUrl: valeur("rn-siteUrl") || "",
+    },
+    backupChannel: valeur("backupChannel"),
     liveNotif: {
       channelId: valeur("live-salon"),
       mention: valeur("live-mention") || "",
@@ -2050,6 +2223,10 @@ function brancherBot() {
     }
     if (b.hasAttribute("data-retirer-commande")) return b.closest(".ligne-commande").remove();
 
+    /* Annonces de rediffs et sauvegardes */
+    if (b.id === "bot-rediff-test") return actionBot("rediff_test", {}, $("#retour-rediff-test"), b);
+    if (b.id === "bot-sauvegarde") return actionBot("sauvegarde_maintenant", {}, $("#retour-sauvegarde-bot"), b);
+
     /* Notifications de live */
     if (b.dataset.liveTest) return actionBot("live_test", { plateforme: b.dataset.liveTest }, $("#retour-live"), b);
 
@@ -2104,6 +2281,8 @@ function brancherBot() {
   };
   zone.onchange = (ev) => {
     const t = ev.target;
+    if (t.name === "am-antiLinks") $("#am-domaines-bloc").hidden = !t.checked;
+    if (t.name === "am-action") $("#am-mute-bloc").hidden = t.value !== "mute";
     // Choisir un rôle remplit le texte du bouton s'il est vide
     if (t.dataset?.rr === "roleId") {
       const label = t.closest(".ligne-role-reaction").querySelector('[data-rr="label"]');
@@ -2123,6 +2302,18 @@ function brancherBot() {
       return (retour.innerHTML = message("Le format du compteur doit contenir {count}.", "erreur"));
     }
     if (config.prefix && /\s/.test(config.prefix)) return (retour.innerHTML = message("Le préfixe ne doit pas contenir d'espace.", "erreur"));
+    const a = config.automod;
+    const erreurV3 =
+      !Number.isInteger(a.maxMentions) || a.maxMentions < 0 || a.maxMentions > 50 ? "Automod : mentions maximum entre 0 et 50."
+      : a.action === "mute" && (!Number.isInteger(a.muteMinutes) || a.muteMinutes < 1 || a.muteMinutes > 1440) ? "Automod : durée du mute entre 1 et 1440 minutes."
+      : a.allowedDomains.length > 50 ? "Automod : 50 domaines autorisés maximum."
+      : a.badWords.length > 200 ? "Automod : 200 mots interdits maximum."
+      : a.badWords.some((m) => m.length > 50) ? "Automod : chaque mot interdit fait 50 caractères maximum."
+      : !Number.isInteger(config.tempVoice.userLimit) || config.tempVoice.userLimit < 0 || config.tempVoice.userLimit > 99 ? "Vocaux temporaires : limite de places entre 0 et 99."
+      : config.rediffNotif.siteUrl && !lienHttps(config.rediffNotif.siteUrl) ? "Annonces de rediffs : l'adresse du site doit commencer par https://"
+      : "";
+    if (erreurV3) return (retour.innerHTML = message(erreurV3, "erreur"));
+    if (a.action !== "mute") a.muteMinutes = Number.isInteger(a.muteMinutes) && a.muteMinutes >= 1 && a.muteMinutes <= 1440 ? a.muteMinutes : 10;
     const noms = new Set();
     for (const c of config.customCommands) {
       if (!/^[a-z0-9_-]{1,32}$/.test(c.name)) return (retour.innerHTML = message(`Commande « ${c.name || "?"} » : nom en minuscules (a-z, 0-9, - et _), 32 caractères maximum.`, "erreur"));
