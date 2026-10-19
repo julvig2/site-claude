@@ -6,6 +6,7 @@
  *   - TWITCH_CLIENT_ID  : l'identifiant de l'application Twitch
  *   - ADMIN_LOGIN       : le pseudo Twitch du propriétaire du site (ex: julvig2).
  *                         Le propriétaire peut ensuite ajouter des modérateurs depuis l'Administration.
+ *   - BOT_SECRET        : (Secret) mot de passe partagé avec le bot Discord (même valeur que dans son .env)
  *
  * Routes :
  *   GET    /redifs          liste publique des rediffs
@@ -38,10 +39,22 @@
  *   PUT    /admin/moderateurs           remplace la liste des modérateurs (propriétaire)
  *   GET    /admin/export                sauvegarde de toutes les données (sauf les fichiers image)
  *   POST   /admin/import                restaure une sauvegarde (propriétaire)
+ *   GET    /admin/bot                   réglages, état et actions du bot Discord
+ *   PUT    /admin/bot/config            enregistre les réglages du bot
+ *   POST   /admin/bot/actions           demande une action au bot { type, params }
+ *   DELETE /admin/bot/actions/:id       annule une action encore en attente
+ *
+ * Bot Discord (en-tête Authorization: Bot <BOT_SECRET>) :
+ *   GET    /bot/sync                    réglages + actions en attente (lecture seule)
+ *   POST   /bot/resultats               résultats des actions { resultats: [{ id, ok, message }] }
+ *   POST   /bot/etat                    état complet du bot (1 Mo maximum)
+ *
+ * Clés KV du bot (un seul écrivain par clé) :
+ *   bot:config (admin) · bot:actions (admin) · bot:resultats (bot) · bot:etat (bot)
  */
 
 // Augmente à chaque nouvelle version : l'Administration prévient si Cloudflare a un ancien code.
-const VERSION_SERVEUR = 6;
+const VERSION_SERVEUR = 7;
 
 const CLE = "redifs";
 const CHAMPS = ["titre", "date", "duree", "categorie", "source", "video", "description", "chapitres"];
@@ -237,8 +250,10 @@ async function toutesReactions(env, redifs) {
   );
 }
 
-async function administration(requete, env, url, moi, action, cible) {
+async function administration(requete, env, url, moi, action, cible, sousCible) {
   const methode = requete.method;
+
+  if (action === "bot") return administrationBot(requete, env, moi, cible, sousCible);
 
   if (methode === "GET" && action === "stats") {
     const redifs = await lireRedifs(env);
@@ -412,6 +427,222 @@ async function administration(requete, env, url, moi, action, cible) {
   return erreur("Route inconnue.", 404);
 }
 
+/* ================= Bot Discord ================= */
+
+const TYPES_ACTIONS_BOT = [
+  "ticket_panel", "ticket_fermer",
+  "giveaway_creer", "giveaway_terminer", "giveaway_supprimer", "giveaway_reroll",
+  "sondage_creer", "sondage_terminer",
+  "annonce",
+  "vip_ajouter", "vip_retirer",
+  "blacklist_ajouter", "blacklist_retirer",
+  "sanction_supprimer",
+  "compteur_creer",
+];
+const MAX_ACTIONS_BOT = 50;
+const MAX_ACTIONS_EN_ATTENTE = 20;
+const MAX_RESULTATS_BOT = 100;
+const MAX_PARAMS_BOT = 5000; // caractères en JSON
+const MAX_ETAT_BOT = 1024 * 1024; // 1 Mo
+const DUREE_VIE_ACTION = 7 * 24 * 3600 * 1000; // 7 jours
+const BOT_EN_LIGNE = 15 * 60 * 1000; // 15 min sans nouvelles = hors ligne
+
+async function empreinte(texteBrut) {
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texteBrut)));
+}
+
+// Compare le secret en temps constant (on compare les SHA-256, octet par octet, sans s'arrêter au premier écart)
+async function botAutorise(requete, env) {
+  const m = (requete.headers.get("Authorization") || "").match(/^Bot\s+(.+)$/);
+  const [a, b] = await Promise.all([empreinte(m ? m[1].trim() : ""), empreinte(String(env.BOT_SECRET))]);
+  let difference = m ? 0 : 1;
+  for (let i = 0; i < a.length; i++) difference |= a[i] ^ b[i];
+  return difference === 0;
+}
+
+const lireBot = async (env, cle, defaut) => (await env.REDIFS.get(`bot:${cle}`, "json")) ?? defaut;
+
+async function routesBot(requete, env, action) {
+  if (!env.BOT_SECRET) return erreur("Le bot n'est pas configuré : ajoute la variable secrète BOT_SECRET dans Cloudflare.", 503);
+  if (!(await botAutorise(requete, env))) return erreur("Secret du bot invalide.", 401);
+  const methode = requete.method;
+
+  // Lecture seule : aucune écriture KV
+  if (methode === "GET" && action === "sync") {
+    const [config, actions, resultats] = await Promise.all([
+      lireBot(env, "config", null),
+      lireBot(env, "actions", []),
+      lireBot(env, "resultats", {}),
+    ]);
+    return json({ config, actions: actions.filter((a) => !resultats[a.id]) }, 200, { "Cache-Control": "no-store" });
+  }
+
+  if (methode === "POST" && action === "resultats") {
+    const corps = await requete.json().catch(() => null);
+    if (!corps || !Array.isArray(corps.resultats)) return erreur("Corps attendu : { resultats: [...] }", 400);
+    const resultats = await lireBot(env, "resultats", {});
+    const maintenant = Date.now();
+    for (const r of corps.resultats.slice(0, MAX_RESULTATS_BOT)) {
+      if (!r || typeof r.id !== "string" || !r.id || r.id.length > 64) continue;
+      resultats[r.id] = { ok: Boolean(r.ok), message: String(r.message ?? "").slice(0, 1000), faitLe: maintenant };
+    }
+    const gardes = Object.entries(resultats)
+      .sort((x, y) => y[1].faitLe - x[1].faitLe)
+      .slice(0, MAX_RESULTATS_BOT);
+    await env.REDIFS.put("bot:resultats", JSON.stringify(Object.fromEntries(gardes)));
+    return json({ ok: true });
+  }
+
+  if (methode === "POST" && action === "etat") {
+    if (Number(requete.headers.get("Content-Length") || 0) > MAX_ETAT_BOT) return erreur("État trop gros (1 Mo maximum).", 413);
+    const brut = await requete.text();
+    if (new TextEncoder().encode(brut).length > MAX_ETAT_BOT) return erreur("État trop gros (1 Mo maximum).", 413);
+    let etat;
+    try {
+      etat = JSON.parse(brut);
+    } catch {
+      return erreur("État invalide (JSON attendu).", 400);
+    }
+    if (!etat || typeof etat !== "object" || Array.isArray(etat)) return erreur("État invalide.", 400);
+    await env.REDIFS.put("bot:etat", JSON.stringify({ ...etat, recuLe: Date.now() }));
+    return json({ ok: true });
+  }
+
+  return erreur("Route inconnue.", 404);
+}
+
+/* ----- Réglages du bot (bot:config) : seules les clés autorisées sont gardées ----- */
+
+const ID_DISCORD = /^\d{5,25}$/;
+
+function idDiscord(v, nom) {
+  if (v === null || v === undefined || v === "") return { valeur: null };
+  const t = String(v).trim();
+  return ID_DISCORD.test(t) ? { valeur: t } : { erreur: `${nom} : identifiant Discord invalide.` };
+}
+
+function nettoyerConfigBot(e) {
+  if (!e || typeof e !== "object" || Array.isArray(e)) return { erreur: "Réglages invalides." };
+  const c = {};
+
+  const prefix = texte(e.prefix, 20);
+  if (prefix && (prefix.length > 5 || /\s/.test(prefix))) return { erreur: "Préfixe : 5 caractères maximum, sans espace." };
+  c.prefix = prefix || null;
+
+  const color = texte(e.color, 7);
+  if (color && !/^#[0-9a-f]{6}$/i.test(color)) return { erreur: "Couleur invalide (format #rrggbb)." };
+  c.color = color || null;
+
+  const ids = {
+    welcomeChannel: "Salon de bienvenue",
+    memberRole: "Rôle automatique",
+    counterChannel: "Salon compteur",
+    vipRole: "Rôle VIP",
+    ticketStaffRole: "Rôle staff des tickets",
+    ticketCategory: "Catégorie des tickets",
+    ticketTranscripts: "Salon des transcripts",
+  };
+  for (const [cle, nom] of Object.entries(ids)) {
+    const r = idDiscord(e[cle], nom);
+    if (r.erreur) return r;
+    c[cle] = r.valeur;
+  }
+
+  const message = typeof e.welcomeMessage === "string" ? e.welcomeMessage.trim() : "";
+  if (message.length > 1500) return { erreur: "Message de bienvenue : 1500 caractères maximum." };
+  c.welcomeMessage = message || null;
+
+  const format = texte(e.counterFormat, 100);
+  if (format && !format.includes("{count}")) return { erreur: "Le format du compteur doit contenir {count}." };
+  c.counterFormat = format || null;
+
+  c.ticketCategories = null;
+  if (Array.isArray(e.ticketCategories) && e.ticketCategories.length) {
+    if (e.ticketCategories.length > 25) return { erreur: "Tickets : 25 catégories maximum." };
+    const vus = new Set();
+    c.ticketCategories = [];
+    for (const cat of e.ticketCategories) {
+      const id = texte(cat?.id, 40).toLowerCase();
+      if (!/^[a-z0-9-]{1,20}$/.test(id)) return { erreur: `Catégorie de ticket « ${id || "?"} » : id en minuscules (a-z, 0-9, -), 20 caractères maximum.` };
+      if (vus.has(id)) return { erreur: `Catégorie de ticket en double : « ${id} ».` };
+      vus.add(id);
+      const label = texte(cat.label, 80);
+      if (!label) return { erreur: `Catégorie de ticket « ${id} » : le nom est obligatoire.` };
+      c.ticketCategories.push({ id, label, emoji: texte(cat.emoji, 64), description: texte(cat.description, 100) });
+    }
+  }
+
+  c.logs = {};
+  if (e.logs && typeof e.logs === "object" && !Array.isArray(e.logs)) {
+    for (const [type, salon] of Object.entries(e.logs).slice(0, 30)) {
+      if (!/^[a-zA-Z0-9_-]{1,30}$/.test(type)) continue;
+      const r = idDiscord(salon, `Logs ${type}`);
+      if (r.erreur) return r;
+      c.logs[type] = r.valeur;
+    }
+  }
+  return { config: c };
+}
+
+async function administrationBot(requete, env, moi, cible, idAction) {
+  const methode = requete.method;
+
+  if (methode === "GET" && !cible) {
+    const [config, etat, actions, resultats] = await Promise.all([
+      lireBot(env, "config", null),
+      lireBot(env, "etat", null),
+      lireBot(env, "actions", []),
+      lireBot(env, "resultats", {}),
+    ]);
+    const fusion = actions.slice(-MAX_ACTIONS_BOT).map((a) => {
+      const r = resultats[a.id];
+      return { ...a, statut: !r ? "attente" : r.ok ? "ok" : "erreur", message: r?.message ?? "", faitLe: r?.faitLe ?? null };
+    });
+    const enLigne = Boolean(etat && Date.now() - etat.recuLe < BOT_EN_LIGNE);
+    return json({ config, etat, actions: fusion, enLigne }, 200, { "Cache-Control": "no-store" });
+  }
+
+  if (methode === "PUT" && cible === "config") {
+    const { config, erreur: msg } = nettoyerConfigBot(await requete.json().catch(() => null));
+    if (msg) return erreur(msg, 400);
+    config.version = Date.now();
+    await env.REDIFS.put("bot:config", JSON.stringify(config));
+    return json({ ok: true, version: config.version });
+  }
+
+  if (cible === "actions") {
+    const [actions, resultats] = await Promise.all([lireBot(env, "actions", []), lireBot(env, "resultats", {})]);
+
+    if (methode === "POST" && !idAction) {
+      const corps = await requete.json().catch(() => null);
+      if (!corps || !TYPES_ACTIONS_BOT.includes(corps.type)) return erreur("Type d'action inconnu.", 400);
+      const params = corps.params ?? {};
+      if (typeof params !== "object" || Array.isArray(params)) return erreur("Paramètres invalides.", 400);
+      if (JSON.stringify(params).length > MAX_PARAMS_BOT) return erreur("Paramètres trop longs (5 000 caractères maximum).", 400);
+
+      const limite = Date.now() - DUREE_VIE_ACTION;
+      const recentes = actions.filter((a) => a.creeLe >= limite); // on retire les actions de plus de 7 jours
+      if (recentes.filter((a) => !resultats[a.id]).length >= MAX_ACTIONS_EN_ATTENTE) {
+        return erreur(`Déjà ${MAX_ACTIONS_EN_ATTENTE} actions en attente : attends que le bot les traite.`, 429);
+      }
+      const nouvelle = { id: crypto.randomUUID(), type: corps.type, params, creeLe: Date.now(), par: moi.login };
+      recentes.push(nouvelle);
+      await env.REDIFS.put("bot:actions", JSON.stringify(recentes.slice(-MAX_ACTIONS_BOT)));
+      return json({ ok: true, id: nouvelle.id });
+    }
+
+    if (methode === "DELETE" && idAction) {
+      const action = actions.find((a) => a.id === idAction);
+      if (!action) return erreur("Action introuvable.", 404);
+      if (resultats[idAction]) return erreur("Cette action a déjà été exécutée par le bot.", 409);
+      await env.REDIFS.put("bot:actions", JSON.stringify(actions.filter((a) => a.id !== idAction)));
+      return json({ ok: true });
+    }
+  }
+
+  return erreur("Route inconnue.", 404);
+}
+
 function nouvelId(titre) {
   const slug = titre
     .toLowerCase()
@@ -458,7 +689,7 @@ export default {
     if (requete.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
     const url = new URL(requete.url);
-    const [, ressource, id, sousId] = url.pathname.split("/").map((x) => decodeURIComponent(x || ""));
+    const [, ressource, id, sousId, sousSousId] = url.pathname.split("/").map((x) => decodeURIComponent(x || ""));
 
     try {
       if (requete.method === "GET" && ressource === "redifs" && !id) {
@@ -468,6 +699,9 @@ export default {
       if (requete.method === "GET" && ressource === "infos" && !id) {
         return json(await env.REDIFS.get("infos", "json"), 200, { "Cache-Control": "no-store" });
       }
+
+      // Le bot Discord s'identifie avec BOT_SECRET (pas avec Twitch)
+      if (ressource === "bot") return await routesBot(requete, env, id);
 
       if (requete.method === "GET" && ressource === "parametres" && !id) {
         return json(await env.REDIFS.get("parametres", "json"), 200, { "Cache-Control": "no-store" });
@@ -570,7 +804,7 @@ export default {
         return json({ titre: infos.title || "" });
       }
 
-      if (ressource === "admin") return await administration(requete, env, url, moi, id, sousId);
+      if (ressource === "admin") return await administration(requete, env, url, moi, id, sousId, sousSousId);
 
       if (requete.method === "PUT" && ressource === "parametres" && !id) {
         const { parametres, erreur: msg } = nettoyerParametres(await requete.json().catch(() => null));

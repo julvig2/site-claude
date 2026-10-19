@@ -21,7 +21,7 @@ function seDeconnecter() {
 }
 
 // Doit correspondre à VERSION_SERVEUR dans worker/worker.js
-const VERSION_SERVEUR_ATTENDUE = 6;
+const VERSION_SERVEUR_ATTENDUE = 7;
 
 const ONGLETS = [
   ["tableau", "📊 Tableau de bord"],
@@ -32,6 +32,7 @@ const ONGLETS = [
   ["images", "🖼 Images"],
   ["equipe", "👥 Équipe"],
   ["sauvegarde", "💾 Sauvegarde"],
+  ["bot", "🤖 Bot Discord"],
 ];
 
 /* ---------- Affichage ---------- */
@@ -151,7 +152,8 @@ async function afficherAdmin(avertissement = "") {
     <section class="panneau" data-panneau="reglages" hidden><div id="panneau-reglages"></div></section>
     <section class="panneau" data-panneau="images" hidden><div id="panneau-images"></div></section>
     <section class="panneau" data-panneau="equipe" hidden><div id="panneau-equipe"></div></section>
-    <section class="panneau" data-panneau="sauvegarde" hidden><div id="panneau-sauvegarde"></div></section>`;
+    <section class="panneau" data-panneau="sauvegarde" hidden><div id="panneau-sauvegarde"></div></section>
+    <section class="panneau" data-panneau="bot" hidden><div id="panneau-bot"></div></section>`;
 
   $("#deconnexion").onclick = seDeconnecter;
   $(".onglets").addEventListener("click", (e) => {
@@ -174,6 +176,7 @@ const CHARGEURS = {
   images: () => chargerImages(),
   equipe: () => chargerEquipe(),
   sauvegarde: () => afficherSauvegarde(),
+  bot: () => chargerBot(),
 };
 
 function ouvrirOnglet(nom) {
@@ -1043,6 +1046,747 @@ function afficherInfos() {
       </div>`
       )
       .join("") || `<p class="vide">Aucune carte pour l'instant.</p>`;
+}
+
+/* ---------- Bot Discord ----------
+ * Le bot n'est pas joignable depuis Internet : c'est lui qui contacte le serveur toutes les 10 s.
+ * Ici, on écrit les réglages (bot:config) et les actions (bot:actions) ; on lit l'état envoyé par le bot (bot:etat).
+ * Tout texte venant de l'état du bot passe par echapper().
+ */
+
+let BOT = null; // { config, etat, actions, enLigne }
+
+const LIBELLES_ACTIONS_BOT = {
+  ticket_panel: "Envoyer le panel de tickets",
+  ticket_fermer: "Fermer un ticket",
+  giveaway_creer: "Créer un giveaway",
+  giveaway_terminer: "Terminer un giveaway",
+  giveaway_supprimer: "Supprimer un giveaway",
+  giveaway_reroll: "Reroll d'un giveaway",
+  sondage_creer: "Créer un sondage",
+  sondage_terminer: "Terminer un sondage",
+  annonce: "Annonce",
+  vip_ajouter: "Ajouter un VIP",
+  vip_retirer: "Retirer un VIP",
+  blacklist_ajouter: "Ajouter à la blacklist",
+  blacklist_retirer: "Retirer de la blacklist",
+  sanction_supprimer: "Supprimer une sanction",
+  compteur_creer: "Créer le salon compteur",
+};
+
+const ENVOYE_AU_BOT = "Envoyé, le bot l'appliquera dans moins d'une minute.";
+const DUREE_BOT = /^(\d+[jhms])+$/i; // 30m, 2h, 7j, 1j12h
+const lienHttps = (v) => /^https:\/\/[^\s"'<>]+$/i.test(v || "");
+const couleurSure = (c) => (/^#[0-9a-f]{6}$/i.test(c || "") ? c : null);
+const dateBot = (ms) => (ms ? new Date(ms).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "—");
+const ilYaBot = (ms) => (ms ? ilYA(new Date(ms).toISOString()) : "—");
+// Champs des actions : rattachés à un formulaire inexistant, pour que « Entrée » n'enregistre pas les réglages
+const HORS_FORM = 'form="hors-formulaire"';
+
+function salonsBot(type) {
+  return BOT?.etat?.salons?.[type] || [];
+}
+
+function nomSalonBot(id) {
+  const tous = [...salonsBot("texte"), ...salonsBot("vocal"), ...salonsBot("categories")];
+  const s = tous.find((x) => x.id === id);
+  return s ? `#${s.nom}` : id ? `salon ${id}` : "—";
+}
+
+function optionsSalonsBot(type, valeur, vide = "— Aucun —") {
+  const liste = salonsBot(type);
+  const inconnu = valeur && !liste.some((s) => s.id === valeur);
+  return [
+    vide === null ? "" : `<option value="">${vide}</option>`,
+    inconnu ? `<option value="${echapper(valeur)}" selected>Salon inconnu (${echapper(valeur)})</option>` : "",
+    ...liste.map(
+      (s) =>
+        `<option value="${echapper(s.id)}"${s.id === valeur ? " selected" : ""}>${type === "categories" ? "" : "#"}${echapper(s.nom)}${
+          s.categorie ? ` — ${echapper(s.categorie)}` : ""
+        }</option>`
+    ),
+  ].join("");
+}
+
+function optionsRolesBot(valeur, vide = "— Aucun —") {
+  const roles = BOT?.etat?.roles || [];
+  const inconnu = valeur && !roles.some((r) => r.id === valeur);
+  return [
+    vide === null ? "" : `<option value="">${vide}</option>`,
+    inconnu ? `<option value="${echapper(valeur)}" selected>Rôle inconnu (${echapper(valeur)})</option>` : "",
+    ...roles.map(
+      (r) =>
+        `<option value="${echapper(r.id)}"${r.id === valeur ? " selected" : ""}>@${echapper(r.nom)}${
+          r.attribuable === false ? " (au-dessus du bot)" : ""
+        }</option>`
+    ),
+  ].join("");
+}
+
+async function chargerBot(retour = "") {
+  const zone = $("#panneau-bot");
+  chargement(zone);
+  try {
+    BOT = await appelApi("/admin/bot");
+  } catch (err) {
+    return erreurServeur(zone, err);
+  }
+  afficherBot(retour);
+}
+
+function bloc(titre, contenu, ouvert = false) {
+  return `<details class="bloc-bot"${ouvert ? " open" : ""}><summary>${titre}</summary><div class="bloc-bot-contenu">${contenu}</div></details>`;
+}
+
+/* ----- Statut ----- */
+
+function htmlStatutBot() {
+  const e = BOT.etat;
+  const c = BOT.config;
+  const pastille = BOT.enLigne
+    ? `<span class="pastille en-ligne">● En ligne</span>`
+    : `<span class="pastille hors-ligne">● Hors ligne</span>`;
+  if (!e) {
+    return `${pastille}${message("Lance le bot une première fois (npm start) pour qu'il envoie la liste des salons et des rôles.", "erreur")}`;
+  }
+  let reglages;
+  if (!c) reglages = `<span class="meta">Aucun réglage enregistré depuis le site : le bot utilise ses propres réglages.</span>`;
+  else if ((e.configAppliquee || 0) >= c.version) reglages = `✅ Réglages appliqués (${dateBot(c.version)})`;
+  else
+    reglages = `⏳ Réglages en attente : ${
+      BOT.enLigne ? "le bot les appliquera dans moins d'une minute." : "le bot les appliquera dès qu'il sera en ligne."
+    }`;
+  const icone = lienHttps(e.serveur?.icone) ? `<img class="icone-serveur" src="${echapper(e.serveur.icone)}" alt="" onerror="this.remove()">` : "";
+  const avatar = lienHttps(e.bot?.avatar) ? `<img class="icone-serveur petite" src="${echapper(e.bot.avatar)}" alt="" onerror="this.remove()">` : "";
+  const avertissements = Array.isArray(e.avertissements) ? e.avertissements : [];
+  return `
+    <div class="statut-bot">
+      ${icone}
+      <div>
+        <div>${pastille} <strong>${echapper(e.serveur?.nom || "Serveur inconnu")}</strong>
+          <span class="meta">· ${nombre(Number(e.serveur?.membres) || 0)} membres · vu ${ilYaBot(e.recuLe)}</span></div>
+        <div class="meta">${avatar}${echapper(e.bot?.nom || "Bot")}</div>
+        <div>${reglages}</div>
+      </div>
+    </div>
+    ${
+      avertissements.length
+        ? `<ul class="avertissements-bot">${avertissements.map((a) => `<li>⚠️ ${echapper(a)}</li>`).join("")}</ul>`
+        : ""
+    }`;
+}
+
+/* ----- Historique ----- */
+
+function resumeParams(a) {
+  const p = a.params || {};
+  const morceaux = [];
+  if (p.salonId) morceaux.push(nomSalonBot(p.salonId));
+  for (const cle of ["prix", "question", "titre", "membre", "membreId", "id", "duree", "raison"]) {
+    if (p[cle] !== undefined && p[cle] !== "") morceaux.push(`${cle} : ${String(p[cle]).slice(0, 60)}`);
+  }
+  return morceaux.join(" · ");
+}
+
+function afficherHistoriqueBot() {
+  const zone = $("#bot-historique");
+  if (!zone) return;
+  const actions = [...BOT.actions].sort((a, b) => b.creeLe - a.creeLe);
+  zone.innerHTML = actions.length
+    ? `<ul class="liste-simple historique-bot">${actions
+        .map((a) => {
+          const statut =
+            a.statut === "ok"
+              ? `<span class="statut-action ok">✅ Fait</span>`
+              : a.statut === "erreur"
+                ? `<span class="statut-action erreur">❌ Erreur</span>`
+                : `<span class="statut-action attente">⏳ En attente</span>`;
+          return `<li>
+            ${statut}
+            <span class="historique-texte"><strong>${echapper(LIBELLES_ACTIONS_BOT[a.type] || a.type)}</strong>
+              <span class="meta">${echapper(resumeParams(a))}</span>
+              <span class="meta">par ${echapper(a.par || "?")} · ${ilYaBot(a.creeLe)}${a.message ? ` · ${echapper(a.message)}` : ""}</span></span>
+            ${a.statut === "attente" ? `<button type="button" class="btn btn-contour btn-petit" data-annuler-action="${echapper(a.id)}">Annuler</button>` : ""}
+          </li>`;
+        })
+        .join("")}</ul>`
+    : `<p class="vide">Aucune action pour l'instant.</p>`;
+}
+
+/* ----- Envoi d'une action ----- */
+
+async function actionBot(type, params, retour, bouton) {
+  if (bouton) bouton.disabled = true;
+  try {
+    const r = await appelApi("/admin/bot/actions", { method: "POST", body: JSON.stringify({ type, params }) });
+    BOT.actions.push({ id: r.id, type, params, creeLe: Date.now(), par: MOI_ADMIN?.login, statut: "attente", message: "" });
+    afficherHistoriqueBot();
+    if (retour) retour.innerHTML = message(ENVOYE_AU_BOT, "ok");
+    return true;
+  } catch (err) {
+    if (err.statut === 401) {
+      afficherAdmin("Ta connexion a expiré, reconnecte-toi.");
+      return false;
+    }
+    if (retour) retour.innerHTML = message(err.message, "erreur");
+    return false;
+  } finally {
+    if (bouton) bouton.disabled = false;
+  }
+}
+
+/* ----- Rendu de l'onglet ----- */
+
+function ligneCategorieTicket(c = { id: "", label: "", emoji: "", description: "" }) {
+  return `<div class="cat-ticket">
+    <input name="cat-id" value="${echapper(c.id)}" placeholder="id (ex : achat)" maxlength="20">
+    <input name="cat-label" value="${echapper(c.label)}" placeholder="Nom (ex : Achat)" maxlength="80">
+    <input name="cat-emoji" value="${echapper(c.emoji || "")}" placeholder="🛒" maxlength="64">
+    <input name="cat-description" value="${echapper(c.description || "")}" placeholder="Description" maxlength="100">
+    <span class="boutons">
+      <button type="button" class="btn btn-contour btn-petit" data-cat="monter" aria-label="Monter">↑</button>
+      <button type="button" class="btn btn-contour btn-petit" data-cat="descendre" aria-label="Descendre">↓</button>
+      <button type="button" class="btn btn-contour btn-petit" data-cat="retirer" aria-label="Retirer">✕</button>
+    </span>
+  </div>`;
+}
+
+function ligneChoixSondage(valeur = "") {
+  return `<div class="choix-sondage"><input ${HORS_FORM} name="choix" value="${echapper(valeur)}" placeholder="Choix" maxlength="80">
+    <button type="button" class="btn btn-contour btn-petit" data-retirer-choix aria-label="Retirer ce choix">✕</button></div>`;
+}
+
+function tableau(entetes, lignes) {
+  return `<div class="tableau-defilant"><table class="tableau-admin tableau-bot">
+    <thead><tr>${entetes.map((e) => `<th>${e}</th>`).join("")}</tr></thead>
+    <tbody>${lignes.join("")}</tbody></table></div>`;
+}
+
+function afficherBot(retour = "") {
+  const zone = $("#panneau-bot");
+  const e = BOT.etat;
+  const cfg = BOT.config || e?.config || {};
+
+  const entete = `
+    <div class="barre-bot">
+      <h2>Bot Discord</h2>
+      <button type="button" class="btn btn-contour btn-petit" id="bot-actualiser">↻ Actualiser</button>
+    </div>
+    ${retour}
+    ${bloc("Statut", `<div id="bot-statut">${htmlStatutBot()}</div>`, true)}`;
+  const historique = bloc("Historique des actions", `<div id="bot-historique"></div>`, true);
+
+  if (!e) {
+    zone.innerHTML = entete + historique;
+    brancherBot();
+    return;
+  }
+
+  const tickets = Array.isArray(e.tickets) ? e.tickets : [];
+  const vips = Array.isArray(e.vips) ? e.vips : [];
+  const sanctions = Array.isArray(e.sanctions) ? e.sanctions : [];
+  const classement = Array.isArray(e.classement) ? e.classement : [];
+  const blacklist = Array.isArray(e.blacklist) ? e.blacklist : [];
+  const giveaways = Array.isArray(e.giveaways) ? e.giveaways : [];
+  const sondages = Array.isArray(e.sondages) ? e.sondages : [];
+  const typesLogs = e.typesLogs && typeof e.typesLogs === "object" ? Object.entries(e.typesLogs) : [];
+  const logs = cfg.logs || {};
+
+  const general = `
+    <div class="ligne ligne-2">
+      <label>Préfixe des commandes<input name="prefix" maxlength="5" value="${echapper(cfg.prefix || "")}" placeholder="+">
+        <small>5 caractères maximum, sans espace.</small></label>
+      <label>Couleur des embeds<input name="color" type="color" value="${couleurSure(cfg.color) || "#9b5cff"}"></label>
+    </div>`;
+
+  const bienvenue = `
+    <div class="ligne ligne-2">
+      <label>Salon de bienvenue<select name="welcomeChannel">${optionsSalonsBot("texte", cfg.welcomeChannel)}</select></label>
+      <label>Rôle donné à l'arrivée<select name="memberRole">${optionsRolesBot(cfg.memberRole)}</select></label>
+    </div>
+    <label>Message de bienvenue
+      <textarea name="welcomeMessage" rows="3" maxlength="1500" placeholder="Bienvenue {user} sur **{server}** ! Nous sommes **{count}** 🎉">${echapper(cfg.welcomeMessage || "")}</textarea>
+      <small>Variables : <code>{user}</code> mentionne le membre, <code>{username}</code> son pseudo, <code>{server}</code> le nom du serveur,
+        <code>{count}</code> le nombre de membres. **gras** comme sur Discord. 1500 caractères maximum.</small>
+    </label>
+    <div class="ligne ligne-2">
+      <label>Salon compteur (vocal)<select name="counterChannel">${optionsSalonsBot("vocal", cfg.counterChannel)}</select></label>
+      <label>Format du compteur<input name="counterFormat" maxlength="100" value="${echapper(cfg.counterFormat || "")}" placeholder="👥 Membres : {count}">
+        <small>Doit contenir <code>{count}</code>.</small></label>
+    </div>
+    <div class="ligne-formulaire">
+      <button type="button" class="btn btn-contour btn-petit" id="bot-compteur">➕ Créer un salon compteur</button>
+      <span id="retour-compteur"></span>
+    </div>`;
+
+  const ticketsHtml = `
+    <div class="ligne">
+      <label>Rôle staff<select name="ticketStaffRole">${optionsRolesBot(cfg.ticketStaffRole)}</select></label>
+      <label>Catégorie des tickets<select name="ticketCategory">${optionsSalonsBot("categories", cfg.ticketCategory)}</select></label>
+      <label>Salon des transcripts<select name="ticketTranscripts">${optionsSalonsBot("texte", cfg.ticketTranscripts)}</select></label>
+    </div>
+    <div>
+      <strong>Catégories de tickets</strong> <small class="meta">(1 à 25 — l'id en minuscules : a-z, 0-9, -)</small>
+      <div id="cats-ticket">${(cfg.ticketCategories || []).map(ligneCategorieTicket).join("")}</div>
+      <button type="button" class="btn btn-contour btn-petit" id="ajouter-cat-ticket">+ Ajouter une catégorie</button>
+    </div>
+    <h4>Envoyer le panel de tickets</h4>
+    <div class="ligne-formulaire">
+      <select ${HORS_FORM} id="panel-salon">${optionsSalonsBot("texte", "", "— Choisis un salon —")}</select>
+      <button type="button" class="btn btn-petit" id="bot-panel">Envoyer le panel</button>
+    </div>
+    <div id="retour-panel"></div>
+    <h4>Tickets ouverts (${tickets.length})</h4>
+    ${
+      tickets.length
+        ? tableau(
+            ["Ticket", "Catégorie", "Auteur", "Pris par", "Ouvert", ""],
+            tickets.map(
+              (t) => `<tr><td>${echapper(t.nom || nomSalonBot(t.salonId))}${t.numero ? ` <span class="meta">#${echapper(t.numero)}</span>` : ""}</td>
+                <td>${echapper(t.categorie || "—")}</td><td>${echapper(t.auteur || "—")}</td><td>${echapper(t.prisPar || "—")}</td>
+                <td>${ilYaBot(t.ouvertLe)}</td>
+                <td><button type="button" class="btn btn-contour btn-petit" data-fermer-ticket="${echapper(t.salonId)}">Fermer</button></td></tr>`
+            )
+          )
+        : `<p class="vide">Aucun ticket ouvert.</p>`
+    }
+    <div id="retour-tickets"></div>`;
+
+  const logsHtml = typesLogs.length
+    ? `<div class="grille-logs">${typesLogs
+        .map(
+          ([type, libelle]) => `<label>${echapper(libelle)}
+            <select name="log-${echapper(type)}" data-log="${echapper(type)}">${optionsSalonsBot("texte", logs[type] || "")}</select></label>`
+        )
+        .join("")}</div>`
+    : `<p class="vide">Le bot n'a pas envoyé de types de logs.</p>`;
+
+  const vipHtml = `
+    <label>Rôle VIP<select name="vipRole">${optionsRolesBot(cfg.vipRole)}</select></label>
+    <h4>Ajouter un VIP</h4>
+    <div class="ligne-formulaire">
+      <input ${HORS_FORM} id="vip-membre" placeholder="Pseudo Discord ou ID" maxlength="100">
+      <input ${HORS_FORM} id="vip-duree" placeholder="Durée (ex : 30j) — vide = à vie" maxlength="20">
+      <button type="button" class="btn btn-petit" id="bot-vip">Ajouter</button>
+    </div>
+    <div id="retour-vip"></div>
+    <h4>VIP (${vips.length})</h4>
+    ${
+      vips.length
+        ? tableau(
+            ["Membre", "Depuis", "Expire", ""],
+            vips.map(
+              (v) => `<tr><td>${echapper(v.nom || v.membreId)}</td><td>${dateBot(v.depuis)}</td>
+                <td>${v.expireLe ? dateBot(v.expireLe) : "À vie"}</td>
+                <td><button type="button" class="btn btn-contour btn-petit" data-retirer-vip="${echapper(v.membreId)}" data-nom="${echapper(v.nom || v.membreId)}">Retirer</button></td></tr>`
+            )
+          )
+        : `<p class="vide">Aucun VIP.</p>`
+    }`;
+
+  const moderation = `
+    <h4>Sanctions récentes (${sanctions.length})</h4>
+    ${
+      sanctions.length
+        ? tableau(
+            ["Cas", "Type", "Membre", "Modérateur", "Raison", "Durée", "Date", ""],
+            sanctions.map(
+              (s) => `<tr><td>#${echapper(s.id)}</td><td>${echapper(s.type || "")}</td><td>${echapper(s.membre || s.membreId || "")}</td>
+                <td>${echapper(s.moderateur || "")}</td><td>${echapper(s.raison || "—")}</td><td>${echapper(s.duree || "—")}</td>
+                <td>${dateBot(s.date)}</td>
+                <td><button type="button" class="btn btn-contour btn-petit" data-suppr-sanction="${echapper(s.id)}">Supprimer</button></td></tr>`
+            )
+          )
+        : `<p class="vide">Aucune sanction.</p>`
+    }
+    <div id="retour-sanctions"></div>
+    <h4>Classement du staff</h4>
+    ${
+      classement.length
+        ? tableau(
+            ["Membre du staff", "Sanctions", "Tickets"],
+            classement.map(
+              (c) => `<tr><td>${echapper(c.nom)}</td><td>${nombre(Number(c.sanctions) || 0)}</td><td>${nombre(Number(c.tickets) || 0)}</td></tr>`
+            )
+          )
+        : `<p class="vide">Pas encore de classement.</p>`
+    }
+    <h4>Blacklist (${blacklist.length})</h4>
+    <div class="ligne-formulaire">
+      <input ${HORS_FORM} id="bl-membre" placeholder="Pseudo Discord ou ID" maxlength="100">
+      <input ${HORS_FORM} id="bl-raison" placeholder="Raison (facultatif)" maxlength="300">
+      <button type="button" class="btn btn-danger btn-petit" id="bot-blacklist">Ajouter</button>
+    </div>
+    <small class="meta">L'ID est obligatoire si la personne n'est pas sur le serveur.</small>
+    <div id="retour-blacklist"></div>
+    ${
+      blacklist.length
+        ? tableau(
+            ["Membre", "Raison", "Date", ""],
+            blacklist.map(
+              (b) => `<tr><td>${echapper(b.nom || b.membreId)} <span class="meta">${echapper(b.membreId)}</span></td>
+                <td>${echapper(b.raison || "—")}</td><td>${dateBot(b.date)}</td>
+                <td><button type="button" class="btn btn-contour btn-petit" data-retirer-blacklist="${echapper(b.membreId)}" data-nom="${echapper(b.nom || b.membreId)}">Retirer</button></td></tr>`
+            )
+          )
+        : `<p class="vide">Personne dans la blacklist.</p>`
+    }`;
+
+  const giveawaysHtml = `
+    <h4>Créer un giveaway</h4>
+    <div class="ligne">
+      <label>Salon<select ${HORS_FORM} id="ga-salon">${optionsSalonsBot("texte", "", "— Choisis un salon —")}</select></label>
+      <label>Prix *<input ${HORS_FORM} id="ga-prix" maxlength="200" placeholder="Nitro 1 mois"></label>
+      <label>Durée *<input ${HORS_FORM} id="ga-duree" maxlength="20" placeholder="2h, 7j, 1j12h"></label>
+    </div>
+    <div class="ligne ligne-2">
+      <label>Nombre de gagnants<input ${HORS_FORM} id="ga-gagnants" type="number" min="1" max="50" value="1"></label>
+      <label>Description<input ${HORS_FORM} id="ga-description" maxlength="1000" placeholder="Facultatif"></label>
+    </div>
+    <button type="button" class="btn btn-petit" id="bot-giveaway">Lancer le giveaway</button>
+    <div id="retour-giveaway"></div>
+    <h4>Giveaways (${giveaways.length})</h4>
+    ${
+      giveaways.length
+        ? tableau(
+            ["Prix", "Salon", "Fin", "Gagnants", "Participants", ""],
+            giveaways.map(
+              (g) => `<tr><td>${echapper(g.prix)}</td><td>${echapper(nomSalonBot(g.salonId))}</td>
+                <td>${g.termine ? "Terminé" : dateBot(g.finLe)}</td>
+                <td>${
+                  g.termine && Array.isArray(g.gagnantsNoms) && g.gagnantsNoms.length
+                    ? echapper(g.gagnantsNoms.join(", "))
+                    : nombre(Number(g.gagnants) || 0)
+                }</td>
+                <td>${nombre(Number(g.participants) || 0)}</td>
+                <td class="actions-tableau">
+                  ${!g.termine ? `<button type="button" class="btn btn-contour btn-petit" data-ga="giveaway_terminer" data-id="${echapper(g.id)}">Terminer</button>` : ""}
+                  ${g.termine ? `<button type="button" class="btn btn-contour btn-petit" data-ga="giveaway_reroll" data-id="${echapper(g.id)}">Reroll</button>` : ""}
+                  <button type="button" class="btn btn-danger btn-petit" data-ga="giveaway_supprimer" data-id="${echapper(g.id)}">Supprimer</button>
+                </td></tr>`
+            )
+          )
+        : `<p class="vide">Aucun giveaway.</p>`
+    }
+    <div id="retour-giveaways"></div>`;
+
+  const sondagesHtml = `
+    <h4>Créer un sondage</h4>
+    <div class="ligne ligne-2">
+      <label>Salon<select ${HORS_FORM} id="so-salon">${optionsSalonsBot("texte", "", "— Choisis un salon —")}</select></label>
+      <label>Durée<input ${HORS_FORM} id="so-duree" maxlength="20" placeholder="Facultatif (ex : 1j)"></label>
+    </div>
+    <label>Question *<input ${HORS_FORM} id="so-question" maxlength="300" placeholder="Quel jeu au prochain stream ?"></label>
+    <div><strong>Choix</strong> <small class="meta">(2 à 10)</small>
+      <div id="so-choix">${ligneChoixSondage("Oui")}${ligneChoixSondage("Non")}</div>
+      <button type="button" class="btn btn-contour btn-petit" id="so-ajouter-choix">+ Ajouter un choix</button>
+    </div>
+    <button type="button" class="btn btn-petit" id="bot-sondage">Lancer le sondage</button>
+    <div id="retour-sondage"></div>
+    <h4>Sondages (${sondages.length})</h4>
+    ${
+      sondages.length
+        ? sondages
+            .map((so) => {
+              const options = Array.isArray(so.options) ? so.options : [];
+              const votes = options.map((o, i) => Number(Array.isArray(so.votes) ? so.votes[i] : so.votes?.[o]) || 0);
+              const total = votes.reduce((a, b) => a + b, 0);
+              return `<div class="sondage-bot">
+                <div class="sondage-tete"><strong>${echapper(so.question)}</strong>
+                  <span class="meta">${so.termine ? "Terminé" : so.finLe ? `fin ${dateBot(so.finLe)}` : "sans fin"} · ${nombre(total)} vote(s)</span>
+                  ${!so.termine ? `<button type="button" class="btn btn-contour btn-petit" data-terminer-sondage="${echapper(so.id)}">Terminer</button>` : ""}
+                </div>
+                ${options
+                  .map((o, i) => {
+                    const pct = total ? Math.round((votes[i] / total) * 100) : 0;
+                    return `<div class="barre-sondage">
+                      <span class="barre-sondage-libelle">${echapper(o)}</span>
+                      <span class="barre-sondage-piste"><span class="barre-sondage-remplie" style="width:${pct}%"></span></span>
+                      <span class="barre-sondage-valeur">${nombre(votes[i])} · ${pct} %</span>
+                    </div>`;
+                  })
+                  .join("")}
+              </div>`;
+            })
+            .join("")
+        : `<p class="vide">Aucun sondage.</p>`
+    }
+    <div id="retour-sondages"></div>`;
+
+  const roles = e.roles || [];
+  const annonce = `
+    <button type="button" class="btn btn-contour btn-petit" id="an-modele-live">🔴 Modèle « Je suis en live »</button>
+    <div class="ligne ligne-2">
+      <label>Salon *<select ${HORS_FORM} id="an-salon">${optionsSalonsBot("texte", "", "— Choisis un salon —")}</select></label>
+      <label>Mention<select ${HORS_FORM} id="an-mention">
+        <option value="">Aucune</option><option value="everyone">@everyone</option><option value="here">@here</option>
+        ${roles.map((r) => `<option value="${echapper(r.id)}">@${echapper(r.nom)}</option>`).join("")}
+      </select></label>
+    </div>
+    <label>Titre<input ${HORS_FORM} id="an-titre" maxlength="256"></label>
+    <label>Texte<textarea ${HORS_FORM} id="an-texte" rows="4" maxlength="4000"></textarea></label>
+    <div class="ligne">
+      <label>Couleur<input ${HORS_FORM} id="an-couleur" type="color" value="${couleurSure(cfg.color) || "#9b5cff"}"></label>
+      <label>Image (https)<input ${HORS_FORM} id="an-image" type="url" maxlength="500" placeholder="https://..."></label>
+    </div>
+    <div class="ligne ligne-2">
+      <label>Lien du bouton (https)<input ${HORS_FORM} id="an-lien" type="url" maxlength="500" placeholder="https://..."></label>
+      <label>Texte du bouton<input ${HORS_FORM} id="an-texte-bouton" maxlength="80" placeholder="Regarder"></label>
+    </div>
+    <button type="button" class="btn btn-petit" id="bot-annonce">Envoyer l'annonce</button>
+    <div id="retour-annonce"></div>`;
+
+  zone.innerHTML = `
+    ${entete}
+    <form id="form-bot" autocomplete="off">
+      ${bloc("Général", general, true)}
+      ${bloc("Bienvenue & membres", bienvenue)}
+      ${bloc("Tickets", ticketsHtml)}
+      ${bloc("Logs", logsHtml)}
+      ${bloc("VIP", vipHtml)}
+      <div class="barre-enregistrer-bot">
+        <div id="retour-config-bot"></div>
+        <button class="btn" type="submit">Enregistrer les réglages</button>
+      </div>
+    </form>
+    ${bloc("Modération", moderation)}
+    ${bloc("Giveaways", giveawaysHtml)}
+    ${bloc("Sondages", sondagesHtml)}
+    ${bloc("Annonce", annonce)}
+    ${historique}`;
+  brancherBot();
+}
+
+/* ----- Réglages (sections Général à VIP) ----- */
+
+function lireConfigBot() {
+  const f = $("#form-bot");
+  const valeur = (nom) => f.querySelector(`[name="${nom}"]`)?.value.trim() || null;
+  const logs = {};
+  f.querySelectorAll("[data-log]").forEach((s) => (logs[s.dataset.log] = s.value || null));
+  const categories = [...f.querySelectorAll(".cat-ticket")]
+    .map((l) => ({
+      id: l.querySelector("[name=cat-id]").value.trim().toLowerCase(),
+      label: l.querySelector("[name=cat-label]").value.trim(),
+      emoji: l.querySelector("[name=cat-emoji]").value.trim(),
+      description: l.querySelector("[name=cat-description]").value.trim(),
+    }))
+    .filter((c) => c.id || c.label || c.emoji || c.description);
+  return {
+    prefix: valeur("prefix"),
+    color: valeur("color"),
+    welcomeChannel: valeur("welcomeChannel"),
+    welcomeMessage: valeur("welcomeMessage"),
+    memberRole: valeur("memberRole"),
+    counterChannel: valeur("counterChannel"),
+    counterFormat: valeur("counterFormat"),
+    vipRole: valeur("vipRole"),
+    ticketStaffRole: valeur("ticketStaffRole"),
+    ticketCategory: valeur("ticketCategory"),
+    ticketTranscripts: valeur("ticketTranscripts"),
+    ticketCategories: categories.length ? categories : null,
+    logs,
+  };
+}
+
+function brancherBot() {
+  const zone = $("#panneau-bot");
+  afficherHistoriqueBot();
+  $("#bot-actualiser").onclick = () => chargerBot();
+
+  // Un seul gestionnaire de clics pour tout l'onglet (redessiné à chaque chargement)
+  zone.onclick = async (ev) => {
+    const b = ev.target.closest("button");
+    if (!b) return;
+
+    if (b.dataset.annulerAction) {
+      if (!confirm("Annuler cette action ?")) return;
+      try {
+        await appelApi(`/admin/bot/actions/${encodeURIComponent(b.dataset.annulerAction)}`, { method: "DELETE" });
+        BOT.actions = BOT.actions.filter((a) => a.id !== b.dataset.annulerAction);
+      } catch (err) {
+        alert(err.message);
+        return chargerBot();
+      }
+      return afficherHistoriqueBot();
+    }
+
+    // Catégories de tickets : réordonner / retirer
+    if (b.dataset.cat) {
+      const ligne = b.closest(".cat-ticket");
+      if (b.dataset.cat === "retirer") ligne.remove();
+      if (b.dataset.cat === "monter" && ligne.previousElementSibling) ligne.parentElement.insertBefore(ligne, ligne.previousElementSibling);
+      if (b.dataset.cat === "descendre" && ligne.nextElementSibling) ligne.parentElement.insertBefore(ligne.nextElementSibling, ligne);
+      return;
+    }
+    if (b.id === "ajouter-cat-ticket") {
+      if ($("#cats-ticket").children.length >= 25) return alert("25 catégories maximum.");
+      return $("#cats-ticket").insertAdjacentHTML("beforeend", ligneCategorieTicket());
+    }
+
+    // Sondage : choix dynamiques
+    if (b.id === "so-ajouter-choix") {
+      if ($("#so-choix").children.length >= 10) return alert("10 choix maximum.");
+      return $("#so-choix").insertAdjacentHTML("beforeend", ligneChoixSondage());
+    }
+    if (b.hasAttribute("data-retirer-choix")) {
+      if ($("#so-choix").children.length <= 2) return alert("Il faut au moins 2 choix.");
+      return b.parentElement.remove();
+    }
+
+    if (b.id === "bot-compteur") return actionBot("compteur_creer", {}, $("#retour-compteur"), b);
+
+    if (b.id === "bot-panel") {
+      const salonId = $("#panel-salon").value;
+      if (!salonId) return ($("#retour-panel").innerHTML = message("Choisis le salon où envoyer le panel.", "erreur"));
+      return actionBot("ticket_panel", { salonId }, $("#retour-panel"), b);
+    }
+    if (b.dataset.fermerTicket) {
+      const raison = prompt("Raison de la fermeture (facultatif) :", "");
+      if (raison === null) return;
+      return actionBot("ticket_fermer", { salonId: b.dataset.fermerTicket, ...(raison.trim() ? { raison: raison.trim() } : {}) }, $("#retour-tickets"), b);
+    }
+
+    if (b.id === "bot-vip") {
+      const membre = $("#vip-membre").value.trim();
+      const duree = $("#vip-duree").value.trim();
+      if (!membre) return ($("#retour-vip").innerHTML = message("Indique le pseudo Discord ou l'ID du membre.", "erreur"));
+      if (duree && !DUREE_BOT.test(duree)) return ($("#retour-vip").innerHTML = message("Durée invalide (ex : 30m, 2h, 7j, 1j12h).", "erreur"));
+      if (await actionBot("vip_ajouter", { membre, ...(duree ? { duree } : {}) }, $("#retour-vip"), b)) {
+        $("#vip-membre").value = $("#vip-duree").value = "";
+      }
+      return;
+    }
+    if (b.dataset.retirerVip) {
+      if (!confirm(`Retirer le VIP de ${b.dataset.nom} ?`)) return;
+      return actionBot("vip_retirer", { membreId: b.dataset.retirerVip }, $("#retour-vip"), b);
+    }
+
+    if (b.dataset.supprSanction) {
+      if (!confirm(`Supprimer la sanction #${b.dataset.supprSanction} ?`)) return;
+      return actionBot("sanction_supprimer", { id: b.dataset.supprSanction }, $("#retour-sanctions"), b);
+    }
+    if (b.id === "bot-blacklist") {
+      const membre = $("#bl-membre").value.trim();
+      const raison = $("#bl-raison").value.trim();
+      if (!membre) return ($("#retour-blacklist").innerHTML = message("Indique le pseudo Discord ou l'ID.", "erreur"));
+      if (await actionBot("blacklist_ajouter", { membre, ...(raison ? { raison } : {}) }, $("#retour-blacklist"), b)) {
+        $("#bl-membre").value = $("#bl-raison").value = "";
+      }
+      return;
+    }
+    if (b.dataset.retirerBlacklist) {
+      if (!confirm(`Retirer ${b.dataset.nom} de la blacklist ?`)) return;
+      return actionBot("blacklist_retirer", { membreId: b.dataset.retirerBlacklist }, $("#retour-blacklist"), b);
+    }
+
+    if (b.id === "bot-giveaway") {
+      const salonId = $("#ga-salon").value;
+      const prix = $("#ga-prix").value.trim();
+      const duree = $("#ga-duree").value.trim();
+      const gagnants = Number($("#ga-gagnants").value) || 1;
+      const description = $("#ga-description").value.trim();
+      const retour = $("#retour-giveaway");
+      if (!salonId || !prix || !duree) return (retour.innerHTML = message("Salon, prix et durée sont obligatoires.", "erreur"));
+      if (!DUREE_BOT.test(duree)) return (retour.innerHTML = message("Durée invalide (ex : 30m, 2h, 7j, 1j12h).", "erreur"));
+      if (await actionBot("giveaway_creer", { salonId, prix, duree, gagnants, ...(description ? { description } : {}) }, retour, b)) {
+        $("#ga-prix").value = $("#ga-duree").value = $("#ga-description").value = "";
+      }
+      return;
+    }
+    if (b.dataset.ga) {
+      const type = b.dataset.ga;
+      const params = { id: b.dataset.id };
+      if (type === "giveaway_supprimer" && !confirm("Supprimer ce giveaway ?")) return;
+      if (type === "giveaway_terminer" && !confirm("Terminer ce giveaway maintenant et tirer les gagnants ?")) return;
+      if (type === "giveaway_reroll") {
+        const n = prompt("Nombre de nouveaux gagnants (facultatif) :", "");
+        if (n === null) return;
+        if (n.trim()) params.gagnants = Math.max(1, Number(n) || 1);
+      }
+      return actionBot(type, params, $("#retour-giveaways"), b);
+    }
+
+    if (b.id === "bot-sondage") {
+      const salonId = $("#so-salon").value;
+      const question = $("#so-question").value.trim();
+      const duree = $("#so-duree").value.trim();
+      const options = [...document.querySelectorAll("#so-choix [name=choix]")].map((i) => i.value.trim()).filter(Boolean);
+      const retour = $("#retour-sondage");
+      if (!salonId || !question) return (retour.innerHTML = message("Salon et question sont obligatoires.", "erreur"));
+      if (options.length < 2 || options.length > 10) return (retour.innerHTML = message("Il faut entre 2 et 10 choix remplis.", "erreur"));
+      if (duree && !DUREE_BOT.test(duree)) return (retour.innerHTML = message("Durée invalide (ex : 30m, 2h, 7j, 1j12h).", "erreur"));
+      if (await actionBot("sondage_creer", { salonId, question, options, ...(duree ? { duree } : {}) }, retour, b)) {
+        $("#so-question").value = $("#so-duree").value = "";
+        $("#so-choix").innerHTML = ligneChoixSondage("Oui") + ligneChoixSondage("Non");
+      }
+      return;
+    }
+    if (b.dataset.terminerSondage) {
+      if (!confirm("Terminer ce sondage maintenant ?")) return;
+      return actionBot("sondage_terminer", { id: b.dataset.terminerSondage }, $("#retour-sondages"), b);
+    }
+
+    if (b.id === "an-modele-live") {
+      const chaine = SITE.chaineTwitch || "";
+      $("#an-titre").value = "🔴 Je suis en live !";
+      $("#an-texte").value = chaine
+        ? `Le stream vient de commencer, viens me rejoindre sur Twitch ! 🎮\nhttps://www.twitch.tv/${chaine}`
+        : "Le stream vient de commencer, viens me rejoindre ! 🎮";
+      if (chaine) {
+        $("#an-lien").value = `https://www.twitch.tv/${chaine}`;
+        $("#an-image").value = `https://static-cdn.jtvnw.net/previews-ttv/live_user_${chaine}-1280x720.jpg`;
+      }
+      $("#an-texte-bouton").value = "Regarder le live";
+      $("#an-couleur").value = "#9146ff";
+      return;
+    }
+    if (b.id === "bot-annonce") {
+      const retour = $("#retour-annonce");
+      const salonId = $("#an-salon").value;
+      const params = {
+        salonId,
+        titre: $("#an-titre").value.trim(),
+        texte: $("#an-texte").value.trim(),
+        couleur: $("#an-couleur").value,
+        image: $("#an-image").value.trim(),
+        lien: $("#an-lien").value.trim(),
+        texteBouton: $("#an-texte-bouton").value.trim(),
+        mention: $("#an-mention").value,
+      };
+      if (!salonId) return (retour.innerHTML = message("Choisis le salon de l'annonce.", "erreur"));
+      if (!params.titre && !params.texte) return (retour.innerHTML = message("Mets au moins un titre ou un texte.", "erreur"));
+      if (params.image && !lienHttps(params.image)) return (retour.innerHTML = message("L'image doit être un lien https://", "erreur"));
+      if (params.lien && !lienHttps(params.lien)) return (retour.innerHTML = message("Le lien doit commencer par https://", "erreur"));
+      for (const cle of Object.keys(params)) if (params[cle] === "") delete params[cle];
+      const mention = params.mention ? ` avec une mention ${params.mention === "everyone" || params.mention === "here" ? "@" + params.mention : "de rôle"}` : "";
+      if (!confirm(`Envoyer cette annonce dans ${nomSalonBot(salonId)}${mention} ?`)) return;
+      return actionBot("annonce", params, retour, b);
+    }
+  };
+
+  $("#form-bot")?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const retour = $("#retour-config-bot");
+    const bouton = ev.submitter;
+    const config = lireConfigBot();
+    if (config.counterFormat && !config.counterFormat.includes("{count}")) {
+      return (retour.innerHTML = message("Le format du compteur doit contenir {count}.", "erreur"));
+    }
+    if (config.prefix && /\s/.test(config.prefix)) return (retour.innerHTML = message("Le préfixe ne doit pas contenir d'espace.", "erreur"));
+    if (bouton) bouton.disabled = true;
+    try {
+      const r = await appelApi("/admin/bot/config", { method: "PUT", body: JSON.stringify(config) });
+      BOT.config = { ...config, version: r.version };
+      $("#bot-statut").innerHTML = htmlStatutBot();
+      retour.innerHTML = message(`Réglages enregistrés. ${ENVOYE_AU_BOT}`, "ok");
+    } catch (err) {
+      if (err.statut === 401) return afficherAdmin("Ta connexion a expiré, reconnecte-toi.");
+      retour.innerHTML = message(err.message, "erreur");
+    } finally {
+      if (bouton) bouton.disabled = false;
+    }
+  });
 }
 
 window.pageAdmin = () => afficherAdmin(ERREUR_CONNEXION || "");
