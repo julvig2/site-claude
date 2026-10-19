@@ -21,7 +21,7 @@ function seDeconnecter() {
 }
 
 // Doit correspondre à VERSION_SERVEUR dans worker/worker.js
-const VERSION_SERVEUR_ATTENDUE = 7;
+const VERSION_SERVEUR_ATTENDUE = 8;
 
 const ONGLETS = [
   ["tableau", "📊 Tableau de bord"],
@@ -1072,6 +1072,9 @@ const LIBELLES_ACTIONS_BOT = {
   blacklist_retirer: "Retirer de la blacklist",
   sanction_supprimer: "Supprimer une sanction",
   compteur_creer: "Créer le salon compteur",
+  roles_publier: "Publier un panneau de rôles",
+  roles_supprimer: "Supprimer un panneau de rôles",
+  live_test: "Tester la notification de live",
 };
 
 const ENVOYE_AU_BOT = "Envoyé, le bot l'appliquera dans moins d'une minute.";
@@ -1159,6 +1162,7 @@ function htmlStatutBot() {
   const icone = lienHttps(e.serveur?.icone) ? `<img class="icone-serveur" src="${echapper(e.serveur.icone)}" alt="" onerror="this.remove()">` : "";
   const avatar = lienHttps(e.bot?.avatar) ? `<img class="icone-serveur petite" src="${echapper(e.bot.avatar)}" alt="" onerror="this.remove()">` : "";
   const avertissements = Array.isArray(e.avertissements) ? e.avertissements : [];
+  const botAncien = (Number(e.versionBot) || 1) < 2;
   return `
     <div class="statut-bot">
       ${icone}
@@ -1169,6 +1173,11 @@ function htmlStatutBot() {
         <div>${reglages}</div>
       </div>
     </div>
+    ${
+      botAncien
+        ? message("Le bot n'est pas à jour (version 1) : les rôles-réactions, les commandes personnalisées et les notifications de live demandent la version 2 du bot.", "erreur")
+        : ""
+    }
     ${
       avertissements.length
         ? `<ul class="avertissements-bot">${avertissements.map((a) => `<li>⚠️ ${echapper(a)}</li>`).join("")}</ul>`
@@ -1182,7 +1191,7 @@ function resumeParams(a) {
   const p = a.params || {};
   const morceaux = [];
   if (p.salonId) morceaux.push(nomSalonBot(p.salonId));
-  for (const cle of ["prix", "question", "titre", "membre", "membreId", "id", "duree", "raison"]) {
+  for (const cle of ["prix", "question", "titre", "membre", "membreId", "id", "duree", "raison", "plateforme"]) {
     if (p[cle] !== undefined && p[cle] !== "") morceaux.push(`${cle} : ${String(p[cle]).slice(0, 60)}`);
   }
   return morceaux.join(" · ");
@@ -1254,6 +1263,150 @@ function ligneCategorieTicket(c = { id: "", label: "", emoji: "", description: "
 function ligneChoixSondage(valeur = "") {
   return `<div class="choix-sondage"><input ${HORS_FORM} name="choix" value="${echapper(valeur)}" placeholder="Choix" maxlength="80">
     <button type="button" class="btn btn-contour btn-petit" data-retirer-choix aria-label="Retirer ce choix">✕</button></div>`;
+}
+
+/* ----- v2 : rôles-réactions, commandes personnalisées, notifications de live ----- */
+
+const STYLES_BOUTON_DISCORD = { bleu: "#5865f2", gris: "#4e5058", vert: "#248046", rouge: "#da373c" };
+let idPanneauManuel = false; // l'identifiant du panneau a été tapé à la main (on arrête de le générer depuis le titre)
+
+function couleurHex(c) {
+  if (typeof c === "number") return `#${c.toString(16).padStart(6, "0")}`;
+  return couleurSure(c);
+}
+
+function slugPanneau(titre) {
+  return String(titre || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 30)
+    .replace(/-+$/, "");
+}
+
+// Seuls les rôles que le bot peut donner (attribuable: true)
+function optionsRolesAttribuables(valeur) {
+  const roles = (BOT?.etat?.roles || []).filter((r) => r.attribuable !== false);
+  const inconnu = valeur && !roles.some((r) => r.id === valeur);
+  return [
+    `<option value="">— Choisis un rôle —</option>`,
+    inconnu ? `<option value="${echapper(valeur)}" selected>Rôle non attribuable (${echapper(valeur)})</option>` : "",
+    ...roles.map((r) => `<option value="${echapper(r.id)}"${r.id === valeur ? " selected" : ""}>@${echapper(r.nom)}</option>`),
+  ].join("");
+}
+
+function ligneRoleReaction(r = {}) {
+  const style = r.style || "gris";
+  return `<div class="ligne-role-reaction">
+    <select ${HORS_FORM} data-rr="roleId" aria-label="Rôle">${optionsRolesAttribuables(r.roleId || "")}</select>
+    <input ${HORS_FORM} data-rr="label" value="${echapper(r.label || "")}" placeholder="Texte du bouton" maxlength="80">
+    <input ${HORS_FORM} data-rr="emoji" value="${echapper(r.emoji || "")}" placeholder="🎮 ou <:nom:id>" maxlength="64">
+    <input ${HORS_FORM} data-rr="description" value="${echapper(r.description || "")}" placeholder="Description (menu)" maxlength="100">
+    <select ${HORS_FORM} data-rr="style" aria-label="Couleur du bouton">${Object.keys(STYLES_BOUTON_DISCORD)
+      .map((s) => `<option value="${s}"${s === style ? " selected" : ""}>${s}</option>`)
+      .join("")}</select>
+    <span class="boutons">
+      <button type="button" class="btn btn-contour btn-petit" data-rr-action="monter" aria-label="Monter">↑</button>
+      <button type="button" class="btn btn-contour btn-petit" data-rr-action="descendre" aria-label="Descendre">↓</button>
+      <button type="button" class="btn btn-contour btn-petit" data-rr-action="retirer" aria-label="Retirer">✕</button>
+    </span>
+  </div>`;
+}
+
+function lirePanneauRoles() {
+  return {
+    id: $("#rr-id").value.trim().toLowerCase(),
+    salonId: $("#rr-salon").value,
+    titre: $("#rr-titre").value.trim(),
+    texte: $("#rr-texte").value.trim(),
+    couleur: $("#rr-couleur").value,
+    mode: $("#rr-mode").value,
+    unique: $("#rr-unique").checked,
+    roles: [...document.querySelectorAll(".ligne-role-reaction")].map((l) => {
+      const champ = (n) => l.querySelector(`[data-rr="${n}"]`).value.trim();
+      return { roleId: champ("roleId"), label: champ("label"), emoji: champ("emoji"), description: champ("description"), style: champ("style") };
+    }),
+  };
+}
+
+// Emoji du serveur <:nom:id> affiché :nom: dans l'aperçu
+const emojiApercu = (e) => echapper(String(e || "").replace(/^<a?:(\w+):\d+>$/, ":$1:"));
+
+function apercuPanneauRoles() {
+  const p = lirePanneauRoles();
+  const roles = p.roles.filter((r) => r.roleId || r.label);
+  const composants =
+    p.mode === "menu"
+      ? `<div class="apercu-menu">
+          <div class="apercu-menu-tete">${p.unique ? "Choisis un rôle…" : "Choisis tes rôles…"} <span>▾</span></div>
+          ${roles
+            .map(
+              (r) => `<div class="apercu-menu-option"><div>${r.emoji ? `${emojiApercu(r.emoji)} ` : ""}<strong>${echapper(r.label || "(sans texte)")}</strong></div>${
+                r.description ? `<span>${echapper(r.description)}</span>` : ""
+              }</div>`
+            )
+            .join("")}
+        </div>`
+      : `<div class="apercu-boutons">${roles
+          .map(
+            (r) => `<span class="apercu-bouton" style="background:${STYLES_BOUTON_DISCORD[r.style] || STYLES_BOUTON_DISCORD.gris}">${
+              r.emoji ? `${emojiApercu(r.emoji)} ` : ""
+            }${echapper(r.label || "(sans texte)")}</span>`
+          )
+          .join("")}</div>`;
+  return `<div class="apercu-discord">
+    <div class="apercu-embed" style="border-left-color:${couleurSure(p.couleur) || "#9b5cff"}">
+      ${p.titre ? `<strong>${echapper(p.titre)}</strong>` : `<span class="meta">(sans titre)</span>`}
+      ${p.texte ? `<p>${echapper(p.texte)}</p>` : ""}
+      ${p.unique ? `<small class="meta">Un seul rôle à la fois</small>` : ""}
+    </div>
+    ${roles.length ? composants : `<span class="meta">Ajoute au moins un rôle.</span>`}
+  </div>`;
+}
+
+function rafraichirFormulaireRoles() {
+  const menu = $("#rr-mode").value === "menu";
+  document.querySelectorAll('.ligne-role-reaction [data-rr="style"]').forEach((s) => (s.disabled = menu));
+  document.querySelectorAll('.ligne-role-reaction [data-rr="description"]').forEach((s) => (s.disabled = !menu));
+  $("#rr-apercu").innerHTML = apercuPanneauRoles();
+}
+
+function remplirPanneauRoles(p = null) {
+  idPanneauManuel = Boolean(p);
+  $("#rr-id").value = p?.id || "";
+  $("#rr-salon").value = p?.salonId || "";
+  $("#rr-titre").value = p?.titre || "";
+  $("#rr-texte").value = p?.texte || "";
+  $("#rr-couleur").value = couleurHex(p?.couleur) || couleurSure(BOT?.config?.color || BOT?.etat?.config?.color) || "#9b5cff";
+  $("#rr-mode").value = p?.mode === "menu" ? "menu" : "boutons";
+  $("#rr-unique").checked = Boolean(p?.unique);
+  $("#rr-roles").innerHTML = (p?.roles?.length ? p.roles : [{}]).map(ligneRoleReaction).join("");
+  $("#rr-titre-formulaire").textContent = p ? `Modifier le panneau « ${p.id} »` : "Nouveau panneau";
+  $("#retour-roles").innerHTML = "";
+  rafraichirFormulaireRoles();
+}
+
+function ligneCommandePerso(c = {}) {
+  const prefixe = echapper(BOT?.config?.prefix || BOT?.etat?.config?.prefix || "+");
+  return `<div class="ligne-commande">
+    <div class="commande-tete">
+      <span class="commande-nom"><span class="prefixe-cmd">${prefixe}</span><input data-cmd="name" value="${echapper(c.name || "")}" placeholder="planning" maxlength="32" aria-label="Nom de la commande"></span>
+      <label class="case"><input type="checkbox" data-cmd="embed"${c.embed ? " checked" : ""}> encadré</label>
+      <label class="case"><input type="checkbox" data-cmd="deleteTrigger"${c.deleteTrigger ? " checked" : ""}> supprimer le message de la personne</label>
+      <button type="button" class="btn btn-contour btn-petit" data-retirer-commande aria-label="Retirer la commande">✕</button>
+    </div>
+    <textarea data-cmd="response" rows="2" maxlength="2000" placeholder="📅 Lundi, mercredi et vendredi à 20h !">${echapper(c.response || "")}</textarea>
+    <small class="meta">Aperçu : on tape <code class="apercu-cmd">${prefixe}${echapper(c.name || "nom")}</code> sur Discord.</small>
+  </div>`;
+}
+
+function htmlEtatLive(plateforme, suivi) {
+  const l = BOT?.etat?.live?.[plateforme];
+  if (!suivi) return `<span class="meta">Pas suivi</span>`;
+  if (!l) return `<span class="meta">Inconnu</span>`;
+  return l.enLive ? `<span class="live-en-cours">🔴 En live depuis ${l.depuis ? dateBot(l.depuis) : "?"}${l.depuis ? ` (${ilYaBot(l.depuis)})` : ""}</span>` : "⚫ Hors ligne";
 }
 
 function tableau(entetes, lignes) {
@@ -1536,6 +1689,90 @@ function afficherBot(retour = "") {
     <button type="button" class="btn btn-petit" id="bot-annonce">Envoyer l'annonce</button>
     <div id="retour-annonce"></div>`;
 
+  const panneaux = Array.isArray(e.rolesReactions) ? e.rolesReactions : [];
+  const rolesReactions = `
+    <h4>Panneaux publiés (${panneaux.length})</h4>
+    ${
+      panneaux.length
+        ? tableau(
+            ["Panneau", "Salon", "Rôles", "Mode", ""],
+            panneaux.map(
+              (p) => `<tr><td>${echapper(p.titre || "(sans titre)")} <span class="meta">${echapper(p.id)}</span></td>
+                <td>${echapper(nomSalonBot(p.salonId))}</td><td>${nombre(Array.isArray(p.roles) ? p.roles.length : 0)}</td>
+                <td>${p.mode === "menu" ? "Menu" : "Boutons"}${p.unique ? " · 1 seul" : ""}</td>
+                <td class="actions-tableau">
+                  <button type="button" class="btn btn-contour btn-petit" data-modifier-panneau="${echapper(p.id)}">Modifier</button>
+                  <button type="button" class="btn btn-danger btn-petit" data-suppr-panneau="${echapper(p.id)}">Supprimer</button>
+                </td></tr>`
+            )
+          )
+        : `<p class="vide">Aucun panneau de rôles.</p>`
+    }
+    <div id="retour-panneaux"></div>
+    <div class="ligne-formulaire"><h4 id="rr-titre-formulaire">Nouveau panneau</h4>
+      <button type="button" class="btn btn-contour btn-petit" id="rr-nouveau">+ Nouveau panneau</button></div>
+    <div class="ligne ligne-2">
+      <label>Titre<input ${HORS_FORM} id="rr-titre" maxlength="256" placeholder="Choisis tes rôles"></label>
+      <label>Identifiant<input ${HORS_FORM} id="rr-id" maxlength="30" placeholder="choisis-tes-roles">
+        <small>a-z, 0-9 et -, 30 caractères. Le même identifiant met à jour le message existant.</small></label>
+    </div>
+    <div class="ligne">
+      <label>Salon<select ${HORS_FORM} id="rr-salon">${optionsSalonsBot("texte", "", "— Choisis un salon —")}</select></label>
+      <label>Mode<select ${HORS_FORM} id="rr-mode"><option value="boutons">Boutons (un par rôle)</option><option value="menu">Menu déroulant</option></select></label>
+      <label>Couleur<input ${HORS_FORM} id="rr-couleur" type="color" value="#9b5cff"></label>
+    </div>
+    <label>Texte<textarea ${HORS_FORM} id="rr-texte" rows="3" maxlength="4000" placeholder="Clique pour obtenir ou retirer un rôle."></textarea></label>
+    <label class="case"><input ${HORS_FORM} type="checkbox" id="rr-unique"> Un seul rôle à la fois parmi ceux du panneau</label>
+    <div><strong>Rôles</strong> <small class="meta">(1 à 25 — seuls les rôles que le bot peut donner sont proposés)</small>
+      <div id="rr-roles"></div>
+      <button type="button" class="btn btn-contour btn-petit" id="rr-ajouter-role">+ Ajouter un rôle</button>
+    </div>
+    <div><strong>Aperçu</strong><div id="rr-apercu"></div></div>
+    <button type="button" class="btn btn-petit" id="bot-roles-publier">Publier</button>
+    <div id="retour-roles"></div>`;
+
+  const commandes = Array.isArray(cfg.customCommands) ? cfg.customCommands : [];
+  const commandesHtml = `
+    <small>Variables : <code>{user}</code> mentionne la personne, <code>{username}</code> son pseudo, <code>{server}</code> le nom du serveur,
+      <code>{count}</code> le nombre de membres, <code>{channel}</code> le salon, <code>{args}</code> le texte tapé après la commande.
+      Nom en minuscules (a-z, 0-9, - et _), 32 caractères, différent des commandes du bot. 50 commandes maximum.</small>
+    <div id="commandes-perso">${commandes.map(ligneCommandePerso).join("")}</div>
+    <button type="button" class="btn btn-contour btn-petit" id="ajouter-commande">+ Ajouter une commande</button>`;
+
+  const ln = cfg.liveNotif || {};
+  const liveTwitch = ln.twitch || SITE.chaineTwitch || "";
+  const liveKick = ln.kick || SITE.chaineKick || "";
+  const liveHtml = `
+    <div class="ligne ligne-2">
+      <label>Salon des notifications<select name="live-salon">${optionsSalonsBot("texte", ln.channelId || "", "— Aucun (désactivé) —")}</select></label>
+      <label>Mention<select name="live-mention">
+        <option value="">Aucune</option>
+        <option value="everyone"${ln.mention === "everyone" ? " selected" : ""}>@everyone</option>
+        <option value="here"${ln.mention === "here" ? " selected" : ""}>@here</option>
+        ${(e.roles || []).map((r) => `<option value="${echapper(r.id)}"${r.id === ln.mention ? " selected" : ""}>@${echapper(r.nom)}</option>`).join("")}
+      </select></label>
+    </div>
+    <div class="ligne ligne-2">
+      <label>Chaîne Twitch<input name="live-twitch" maxlength="25" value="${echapper(liveTwitch)}"><small>Vide = pas de suivi Twitch.</small></label>
+      <label>Chaîne Kick<input name="live-kick" maxlength="40" value="${echapper(liveKick)}"><small>Vide = pas de suivi Kick.</small></label>
+    </div>
+    <label>Message
+      <textarea name="live-message" rows="2" maxlength="500" placeholder="{chaine} est en live sur {plateforme} ! Viens nous rejoindre 🎉">${echapper(ln.message || "")}</textarea>
+      <small>Variables : <code>{chaine}</code>, <code>{plateforme}</code>, <code>{titre}</code> (titre du live), <code>{jeu}</code>, <code>{lien}</code>. 500 caractères maximum.
+        Le bot vérifie toutes les 2 minutes ; à la fin du live, le message devient « ⚫ Live terminé ».</small>
+    </label>
+    <div class="ligne-formulaire">
+      <button type="button" class="btn btn-contour btn-petit" data-live-test="twitch">Tester Twitch</button>
+      <button type="button" class="btn btn-contour btn-petit" data-live-test="kick">Tester Kick</button>
+    </div>
+    <small class="meta">Le test envoie un exemple dans le salon enregistré : enregistre d'abord les réglages si tu viens de les changer.</small>
+    <div id="retour-live"></div>
+    <h4>En ce moment</h4>
+    <ul class="liste-simple etat-live-bot">
+      <li><strong>Twitch</strong> ${htmlEtatLive("twitch", liveTwitch)}</li>
+      <li><strong>Kick</strong> ${htmlEtatLive("kick", liveKick)}</li>
+    </ul>`;
+
   zone.innerHTML = `
     ${entete}
     <form id="form-bot" autocomplete="off">
@@ -1544,11 +1781,14 @@ function afficherBot(retour = "") {
       ${bloc("Tickets", ticketsHtml)}
       ${bloc("Logs", logsHtml)}
       ${bloc("VIP", vipHtml)}
+      ${bloc("✨ Commandes personnalisées", commandesHtml)}
+      ${bloc("🔴 Notifications de live", liveHtml)}
       <div class="barre-enregistrer-bot">
         <div id="retour-config-bot"></div>
         <button class="btn" type="submit">Enregistrer les réglages</button>
       </div>
     </form>
+    ${bloc("🎭 Rôles-réactions", rolesReactions)}
     ${bloc("Modération", moderation)}
     ${bloc("Giveaways", giveawaysHtml)}
     ${bloc("Sondages", sondagesHtml)}
@@ -1586,6 +1826,21 @@ function lireConfigBot() {
     ticketTranscripts: valeur("ticketTranscripts"),
     ticketCategories: categories.length ? categories : null,
     logs,
+    customCommands: [...f.querySelectorAll(".ligne-commande")]
+      .map((l) => ({
+        name: l.querySelector('[data-cmd="name"]').value.trim().toLowerCase(),
+        response: l.querySelector('[data-cmd="response"]').value.trim(),
+        embed: l.querySelector('[data-cmd="embed"]').checked,
+        deleteTrigger: l.querySelector('[data-cmd="deleteTrigger"]').checked,
+      }))
+      .filter((c) => c.name || c.response),
+    liveNotif: {
+      channelId: valeur("live-salon"),
+      mention: valeur("live-mention") || "",
+      twitch: (valeur("live-twitch") || "").toLowerCase(),
+      kick: (valeur("live-kick") || "").toLowerCase(),
+      message: valeur("live-message") || "",
+    },
   };
 }
 
@@ -1727,6 +1982,77 @@ function brancherBot() {
       return actionBot("sondage_terminer", { id: b.dataset.terminerSondage }, $("#retour-sondages"), b);
     }
 
+    /* Rôles-réactions */
+    if (b.id === "rr-nouveau") return remplirPanneauRoles(null);
+    if (b.id === "rr-ajouter-role") {
+      if ($("#rr-roles").children.length >= 25) return alert("25 rôles maximum par panneau.");
+      $("#rr-roles").insertAdjacentHTML("beforeend", ligneRoleReaction());
+      return rafraichirFormulaireRoles();
+    }
+    if (b.dataset.rrAction) {
+      const ligne = b.closest(".ligne-role-reaction");
+      if (b.dataset.rrAction === "retirer") ligne.remove();
+      if (b.dataset.rrAction === "monter" && ligne.previousElementSibling) ligne.parentElement.insertBefore(ligne, ligne.previousElementSibling);
+      if (b.dataset.rrAction === "descendre" && ligne.nextElementSibling) ligne.parentElement.insertBefore(ligne.nextElementSibling, ligne);
+      return rafraichirFormulaireRoles();
+    }
+    if (b.dataset.modifierPanneau) {
+      const p = (BOT.etat.rolesReactions || []).find((x) => x.id === b.dataset.modifierPanneau);
+      if (p) remplirPanneauRoles(p);
+      return $("#rr-titre-formulaire").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    if (b.dataset.supprPanneau) {
+      if (!confirm(`Supprimer le panneau « ${b.dataset.supprPanneau} » ? Son message sera retiré de Discord.`)) return;
+      return actionBot("roles_supprimer", { id: b.dataset.supprPanneau }, $("#retour-panneaux"), b);
+    }
+    if (b.id === "bot-roles-publier") {
+      const retour = $("#retour-roles");
+      const p = lirePanneauRoles();
+      const roles = p.roles.filter((r) => r.roleId || r.label || r.emoji || r.description);
+      if (!/^[a-z0-9-]{1,30}$/.test(p.id)) return (retour.innerHTML = message("Identifiant : a-z, 0-9 et -, 30 caractères maximum.", "erreur"));
+      if (!p.salonId) return (retour.innerHTML = message("Choisis le salon du panneau.", "erreur"));
+      if (!roles.length || roles.length > 25) return (retour.innerHTML = message("Il faut entre 1 et 25 rôles.", "erreur"));
+      const vus = new Set();
+      for (const r of roles) {
+        if (!r.roleId) return (retour.innerHTML = message("Choisis un rôle sur chaque ligne.", "erreur"));
+        if (!r.label) return (retour.innerHTML = message("Chaque rôle doit avoir un texte de bouton.", "erreur"));
+        if (vus.has(r.roleId)) return (retour.innerHTML = message("Le même rôle est présent deux fois.", "erreur"));
+        vus.add(r.roleId);
+      }
+      const existant = (BOT.etat.rolesReactions || []).find((x) => x.id === p.id);
+      if (existant && existant.salonId !== p.salonId) {
+        if (!confirm(`Le panneau « ${p.id} » change de salon : l'ancien message sera supprimé. Continuer ?`)) return;
+      } else if (existant && !confirm(`Le panneau « ${p.id} » existe déjà : son message sera mis à jour. Continuer ?`)) return;
+      const params = {
+        id: p.id,
+        salonId: p.salonId,
+        ...(p.titre ? { titre: p.titre } : {}),
+        ...(p.texte ? { texte: p.texte } : {}),
+        couleur: p.couleur,
+        mode: p.mode,
+        unique: p.unique,
+        roles: roles.map((r) => ({
+          roleId: r.roleId,
+          label: r.label,
+          ...(r.emoji ? { emoji: r.emoji } : {}),
+          ...(r.description && p.mode === "menu" ? { description: r.description } : {}),
+          ...(p.mode === "boutons" ? { style: r.style || "gris" } : {}),
+        })),
+      };
+      return actionBot("roles_publier", params, retour, b);
+    }
+
+    /* Commandes personnalisées */
+    if (b.id === "ajouter-commande") {
+      if ($("#commandes-perso").children.length >= 50) return alert("50 commandes maximum.");
+      $("#commandes-perso").insertAdjacentHTML("beforeend", ligneCommandePerso());
+      return $("#commandes-perso").lastElementChild.querySelector('[data-cmd="name"]').focus();
+    }
+    if (b.hasAttribute("data-retirer-commande")) return b.closest(".ligne-commande").remove();
+
+    /* Notifications de live */
+    if (b.dataset.liveTest) return actionBot("live_test", { plateforme: b.dataset.liveTest }, $("#retour-live"), b);
+
     if (b.id === "an-modele-live") {
       const chaine = SITE.chaineTwitch || "";
       $("#an-titre").value = "🔴 Je suis en live !";
@@ -1765,6 +2091,29 @@ function brancherBot() {
     }
   };
 
+  // Aperçus en direct (rôles-réactions, nom des commandes)
+  zone.oninput = (ev) => {
+    const t = ev.target;
+    if (t.id === "rr-id") idPanneauManuel = Boolean(t.value.trim());
+    if (t.id === "rr-titre" && !idPanneauManuel) $("#rr-id").value = slugPanneau(t.value);
+    if (t.closest?.("#rr-apercu") || t.id?.startsWith("rr-") || t.closest?.(".ligne-role-reaction")) rafraichirFormulaireRoles();
+    if (t.dataset?.cmd === "name") {
+      t.closest(".ligne-commande").querySelector(".apercu-cmd").textContent =
+        (BOT?.config?.prefix || BOT?.etat?.config?.prefix || "+") + (t.value.trim().toLowerCase() || "nom");
+    }
+  };
+  zone.onchange = (ev) => {
+    const t = ev.target;
+    // Choisir un rôle remplit le texte du bouton s'il est vide
+    if (t.dataset?.rr === "roleId") {
+      const label = t.closest(".ligne-role-reaction").querySelector('[data-rr="label"]');
+      const role = (BOT.etat.roles || []).find((r) => r.id === t.value);
+      if (role && !label.value.trim()) label.value = role.nom.slice(0, 80);
+    }
+    if (t.closest?.(".ligne-role-reaction") || t.id?.startsWith("rr-")) rafraichirFormulaireRoles();
+  };
+  if ($("#rr-roles")) remplirPanneauRoles(null);
+
   $("#form-bot")?.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const retour = $("#retour-config-bot");
@@ -1774,6 +2123,13 @@ function brancherBot() {
       return (retour.innerHTML = message("Le format du compteur doit contenir {count}.", "erreur"));
     }
     if (config.prefix && /\s/.test(config.prefix)) return (retour.innerHTML = message("Le préfixe ne doit pas contenir d'espace.", "erreur"));
+    const noms = new Set();
+    for (const c of config.customCommands) {
+      if (!/^[a-z0-9_-]{1,32}$/.test(c.name)) return (retour.innerHTML = message(`Commande « ${c.name || "?"} » : nom en minuscules (a-z, 0-9, - et _), 32 caractères maximum.`, "erreur"));
+      if (noms.has(c.name)) return (retour.innerHTML = message(`Commande en double : « ${c.name} ».`, "erreur"));
+      noms.add(c.name);
+      if (!c.response) return (retour.innerHTML = message(`Commande « ${c.name} » : écris une réponse.`, "erreur"));
+    }
     if (bouton) bouton.disabled = true;
     try {
       const r = await appelApi("/admin/bot/config", { method: "PUT", body: JSON.stringify(config) });

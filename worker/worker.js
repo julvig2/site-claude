@@ -54,7 +54,7 @@
  */
 
 // Augmente à chaque nouvelle version : l'Administration prévient si Cloudflare a un ancien code.
-const VERSION_SERVEUR = 7;
+const VERSION_SERVEUR = 8;
 
 const CLE = "redifs";
 const CHAMPS = ["titre", "date", "duree", "categorie", "source", "video", "description", "chapitres"];
@@ -438,11 +438,14 @@ const TYPES_ACTIONS_BOT = [
   "blacklist_ajouter", "blacklist_retirer",
   "sanction_supprimer",
   "compteur_creer",
+  "roles_publier", "roles_supprimer",
+  "live_test",
 ];
 const MAX_ACTIONS_BOT = 50;
 const MAX_ACTIONS_EN_ATTENTE = 20;
 const MAX_RESULTATS_BOT = 100;
-const MAX_PARAMS_BOT = 5000; // caractères en JSON
+const MAX_PARAMS_BOT = 20000; // caractères en JSON (un panneau de 25 rôles dépasse 5 000)
+const MAX_COMMANDES_PERSO = 50;
 const MAX_ETAT_BOT = 1024 * 1024; // 1 Mo
 const DUREE_VIE_ACTION = 7 * 24 * 3600 * 1000; // 7 jours
 const BOT_EN_LIGNE = 15 * 60 * 1000; // 15 min sans nouvelles = hors ligne
@@ -572,6 +575,40 @@ function nettoyerConfigBot(e) {
     }
   }
 
+  // Commandes personnalisées : +nom -> réponse
+  c.customCommands = [];
+  if (Array.isArray(e.customCommands)) {
+    if (e.customCommands.length > MAX_COMMANDES_PERSO) return { erreur: `Commandes personnalisées : ${MAX_COMMANDES_PERSO} maximum.` };
+    const noms = new Set();
+    for (const cmd of e.customCommands) {
+      const name = texte(cmd?.name, 40).toLowerCase();
+      if (!/^[a-z0-9_-]{1,32}$/.test(name)) return { erreur: `Commande « ${name || "?"} » : nom en minuscules (a-z, 0-9, - et _), 32 caractères maximum.` };
+      if (noms.has(name)) return { erreur: `Commande en double : « ${name} ».` };
+      noms.add(name);
+      const response = typeof cmd.response === "string" ? cmd.response.trim() : "";
+      if (!response) return { erreur: `Commande « ${name} » : la réponse est vide.` };
+      if (response.length > 2000) return { erreur: `Commande « ${name} » : 2000 caractères maximum.` };
+      c.customCommands.push({ name, response, embed: cmd.embed === true, deleteTrigger: cmd.deleteTrigger === true });
+    }
+  }
+
+  // Notifications de live
+  c.liveNotif = null;
+  if (e.liveNotif && typeof e.liveNotif === "object" && !Array.isArray(e.liveNotif)) {
+    const l = e.liveNotif;
+    const salon = idDiscord(l.channelId, "Salon des notifications de live");
+    if (salon.erreur) return salon;
+    const mention = texte(l.mention, 30);
+    if (mention && !["everyone", "here"].includes(mention) && !ID_DISCORD.test(mention)) return { erreur: "Notifications de live : mention invalide." };
+    const twitch = texte(l.twitch, 40).toLowerCase();
+    if (twitch && !/^[a-z0-9_]{1,25}$/.test(twitch)) return { erreur: `Notifications de live : chaîne Twitch invalide (« ${twitch} »).` };
+    const kick = texte(l.kick, 40).toLowerCase();
+    if (kick && !/^[a-z0-9_-]{1,40}$/.test(kick)) return { erreur: `Notifications de live : chaîne Kick invalide (« ${kick} »).` };
+    const messageLive = typeof l.message === "string" ? l.message.trim() : "";
+    if (messageLive.length > 500) return { erreur: "Notifications de live : message de 500 caractères maximum." };
+    c.liveNotif = { channelId: salon.valeur, mention, twitch, kick, message: messageLive };
+  }
+
   c.logs = {};
   if (e.logs && typeof e.logs === "object" && !Array.isArray(e.logs)) {
     for (const [type, salon] of Object.entries(e.logs).slice(0, 30)) {
@@ -618,7 +655,7 @@ async function administrationBot(requete, env, moi, cible, idAction) {
       if (!corps || !TYPES_ACTIONS_BOT.includes(corps.type)) return erreur("Type d'action inconnu.", 400);
       const params = corps.params ?? {};
       if (typeof params !== "object" || Array.isArray(params)) return erreur("Paramètres invalides.", 400);
-      if (JSON.stringify(params).length > MAX_PARAMS_BOT) return erreur("Paramètres trop longs (5 000 caractères maximum).", 400);
+      if (JSON.stringify(params).length > MAX_PARAMS_BOT) return erreur("Paramètres trop longs (20 000 caractères maximum).", 400);
 
       const limite = Date.now() - DUREE_VIE_ACTION;
       const recentes = actions.filter((a) => a.creeLe >= limite); // on retire les actions de plus de 7 jours
