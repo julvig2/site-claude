@@ -12,7 +12,7 @@ Il n'y a rien à installer : ce sont juste des fichiers HTML, CSS et JavaScript.
 | `video.html?id=...` | Le lecteur d'une rediff, la frise des chapitres (avec une image par chapitre), les likes et commentaires (connexion Twitch), et des suggestions |
 | `autres.html` | « Info » : planning, setup, clips… (modifiable depuis l'espace admin) |
 | `a-propos.html` | Présentation et liens vers les réseaux |
-| `admin.html` | **Administration** (visible dans le menu seulement pour le propriétaire et les modérateurs) : tableau de bord, rediffs, Info, commentaires et bannissements, réglages du site, images, équipe, sauvegarde, bot Discord |
+| `admin.html` | **Administration** (visible dans le menu seulement pour le propriétaire et les modérateurs) : tableau de bord, rediffs, Info, commentaires et bannissements, réglages du site, images, équipe, sauvegarde |
 | `soutenir.html` | Page de dons avec le panneau Ko-fi intégré (carte bancaire ou PayPal) |
 
 ## Modifier le contenu

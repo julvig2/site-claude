@@ -77,33 +77,13 @@ Les modérateurs s'ajoutent depuis l'onglet **Équipe** de l'Administration.
 Quand le site reçoit une nouvelle fonction, l'Administration affiche « Le code du serveur Cloudflare n'est pas à jour ».
 Il suffit alors de recoller `worker/worker.js` dans Cloudflare : **julvig-api → Edit code**, tout effacer, coller, **Deploy**.
 
-## Bot Discord (onglet « 🤖 Bot Discord » de l'Administration)
+## Bot Discord (facultatif)
 
-Le bot Discord n'a pas besoin d'être joignable depuis Internet (il peut tourner sur ton PC) : c'est lui qui contacte
-le serveur Cloudflare toutes les 10 secondes pour récupérer les réglages et les actions demandées depuis l'Administration,
-puis renvoie les résultats et son état (salons, rôles, tickets, giveaways…).
-
-### 1. Ajouter le secret `BOT_SECRET` dans Cloudflare
-1. Choisis une **longue chaîne aléatoire** (au moins 32 caractères), par exemple avec un générateur de mots de passe.
-2. Dans Cloudflare, ouvre ton Worker **julvig-api**, puis **Settings → Variables and Secrets → Add**.
-3. Choisis le type **Secret** (pas « Text »), mets le nom `BOT_SECRET` et colle ta chaîne comme valeur. Clique sur **Deploy** (ou **Save**).
-4. Mets **exactement la même valeur** dans la ligne `BOT_SECRET=` du fichier `.env` du bot.
-
-> ⚠️ Ne mets **jamais** ce secret dans le code du site (`contenu.js`, `admin.js`…) : le site est public et tout le monde pourrait le lire.
-> Avec ce secret, n'importe qui pourrait se faire passer pour le bot.
-
-### 2. Recoller le code du serveur
-Les routes du bot sont dans `worker/worker.js` : recolle-le dans Cloudflare (**julvig-api → Edit code**, tout effacer, coller, **Deploy**).
-Tant que ce n'est pas fait, l'Administration affiche « Le code du serveur Cloudflare n'est pas à jour ».
-
-### 3. Lancer le bot
-Lance le bot une première fois (`npm start`) : il envoie la liste des salons et des rôles, et l'onglet **🤖 Bot Discord**
-passe **en ligne**. Les réglages et actions envoyés depuis le site sont appliqués **en moins d'une minute**
-(le stockage de Cloudflare met parfois quelques secondes à se mettre à jour).
-
-Si le bot répond « 503 » : la variable `BOT_SECRET` n'existe pas dans Cloudflare. S'il répond « 401 » : le secret du `.env` n'est pas le même que celui de Cloudflare.
+L'onglet « 🤖 Bot Discord » a été retiré de l'Administration. Les routes du bot (`/bot/...`) sont toujours dans `worker/worker.js` :
+si le bot tourne avec le bon `BOT_SECRET`, il continue de se synchroniser avec ses propres réglages, sans gêner le site.
+Si tu n'utilises plus le bot, tu peux supprimer la variable secrète `BOT_SECRET` dans Cloudflare : les routes du bot répondront alors 503.
 
 ## Limites gratuites de Cloudflare
 
 100 000 visites par jour et 1 000 publications ou modifications par jour. C'est très largement suffisant.
-Le bot Discord en utilise environ 150 à 500 par jour (il n'envoie son état qu'au plus toutes les 3 minutes).
+Si le bot Discord tourne, il en utilise environ 150 à 500 par jour.
