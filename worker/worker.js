@@ -4,7 +4,8 @@
  * À configurer dans Cloudflare (voir worker/INSTALLATION.md) :
  *   - REDIFS            : un espace de stockage "KV" relié au Worker
  *   - TWITCH_CLIENT_ID  : l'identifiant de l'application Twitch
- *   - ADMIN_LOGIN       : le pseudo Twitch autorisé à publier (ex: julvig2)
+ *   - ADMIN_LOGIN       : le pseudo Twitch du propriétaire du site (ex: julvig2).
+ *                         Le propriétaire peut ensuite ajouter des modérateurs depuis l'Administration.
  *
  * Routes :
  *   GET    /redifs          liste publique des rediffs
@@ -22,7 +23,25 @@
  *   POST   /likes/:id       ajoute / retire son like (connecté)
  *   POST   /commentaires/:id          ajoute un commentaire (connecté)
  *   DELETE /commentaires/:id/:comId   supprime un commentaire (son auteur ou l'admin)
+ *   GET    /parametres      réglages du site modifiés depuis l'Administration (null sinon)
+ *   PUT    /parametres      modifie les réglages du site (admin)
+ *
+ * Administration (admin = propriétaire ou modérateur) :
+ *   GET    /admin/stats                 chiffres du site
+ *   GET    /admin/commentaires          tous les commentaires, du plus récent au plus ancien
+ *   GET    /admin/bannis                comptes bannis
+ *   POST   /admin/bannis                bannit un compte { login, purger }
+ *   DELETE /admin/bannis/:login         débannit un compte
+ *   GET    /admin/images                images envoyées et où elles sont utilisées
+ *   DELETE /images/:id                  supprime une image
+ *   GET    /admin/moderateurs           propriétaires et modérateurs
+ *   PUT    /admin/moderateurs           remplace la liste des modérateurs (propriétaire)
+ *   GET    /admin/export                sauvegarde de toutes les données (sauf les fichiers image)
+ *   POST   /admin/import                restaure une sauvegarde (propriétaire)
  */
+
+// Augmente à chaque nouvelle version : l'Administration prévient si Cloudflare a un ancien code.
+const VERSION_SERVEUR = 6;
 
 const CLE = "redifs";
 const CHAMPS = ["titre", "date", "duree", "categorie", "source", "video", "description", "chapitres"];
@@ -33,6 +52,12 @@ const MAX_IMAGE = 500 * 1024; // 500 Ko (l'espace admin redimensionne avant d'en
 const MAX_COMMENTAIRE = 500; // caractères
 const MAX_COMMENTAIRES = 1000; // par rediff
 const DELAI_COMMENTAIRE = 15; // secondes minimum entre deux commentaires d'un même compte
+
+const MAX_MODERATEURS = 20;
+const MAX_RESEAUX = 12;
+const LOGIN_TWITCH = /^[a-z0-9_]{3,25}$/;
+const lienWeb = (v) => typeof v === "string" && v.length <= 500 && /^https:\/\/[^\s"'<>]+$/i.test(v);
+const texte = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
 const LIMITES_INFO = { titre: 120, type: 30, description: 1000, lien: 500 };
 const MAX_INFOS = 50;
@@ -72,12 +97,32 @@ async function utilisateur(requete, env) {
   const infos = await rep.json();
   // Le jeton doit venir de NOTRE application Twitch, pas d'une autre.
   if (infos.client_id !== env.TWITCH_CLIENT_ID) return null;
-  const admins = String(env.ADMIN_LOGIN || "")
+  const login = String(infos.login).toLowerCase();
+  const [moderateurs, bannis] = await Promise.all([lireModerateurs(env), lireBannis(env)]);
+  const proprietaire = proprietaires(env).includes(login);
+  return {
+    login,
+    proprietaire,
+    admin: proprietaire || moderateurs.includes(login),
+    banni: bannis.some((b) => b.login === login),
+  };
+}
+
+// Les propriétaires sont dans la variable ADMIN_LOGIN de Cloudflare (impossible à retirer depuis le site)
+function proprietaires(env) {
+  return String(env.ADMIN_LOGIN || "")
     .toLowerCase()
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  return { login: infos.login, admin: admins.includes(String(infos.login).toLowerCase()) };
+}
+
+async function lireModerateurs(env) {
+  return (await env.REDIFS.get("moderateurs", "json")) || [];
+}
+
+async function lireBannis(env) {
+  return (await env.REDIFS.get("bannis", "json")) || [];
 }
 
 // Nettoie et valide une rediff envoyée par l'espace admin.
@@ -125,6 +170,246 @@ function nettoyerInfos(entree) {
     infos.push(r);
   }
   return { infos };
+}
+
+// Réglages du site modifiables depuis l'Administration
+function nettoyerParametres(e) {
+  if (!e || typeof e !== "object" || Array.isArray(e)) return { erreur: "Réglages invalides." };
+  const p = { slogan: texte(e.slogan, 200), aPropos: texte(e.aPropos, 3000) };
+  for (const cle of ["chaineTwitch", "chaineKick"]) {
+    p[cle] = texte(e[cle], 40).toLowerCase();
+    if (p[cle] && !/^[a-z0-9_-]{1,40}$/.test(p[cle])) return { erreur: `Nom de chaîne invalide : « ${p[cle]} »` };
+  }
+  for (const [cle, nom] of [["don", "dons"], ["discord", "Discord"]]) {
+    p[cle] = texte(e[cle], 500);
+    if (p[cle] && !lienWeb(p[cle])) return { erreur: `Lien ${nom} invalide : il doit commencer par https://` };
+  }
+  p.reseaux = [];
+  for (const r of Array.isArray(e.reseaux) ? e.reseaux.slice(0, MAX_RESEAUX) : []) {
+    const nom = texte(r?.nom, 30);
+    const url = texte(r?.url, 500);
+    if (!nom && !url) continue;
+    if (!nom) return { erreur: "Chaque réseau doit avoir un nom." };
+    if (!lienWeb(url)) return { erreur: `Lien invalide pour « ${nom} » : il doit commencer par https://` };
+    p.reseaux.push({ nom, url });
+  }
+  return { parametres: p };
+}
+
+function nettoyerLogins(liste, max) {
+  return [...new Set((Array.isArray(liste) ? liste : []).map((l) => String(l).trim().toLowerCase()))]
+    .filter((l) => LOGIN_TWITCH.test(l))
+    .slice(0, max);
+}
+
+function nettoyerCommentaires(liste) {
+  return (Array.isArray(liste) ? liste : [])
+    .filter((c) => c && LOGIN_TWITCH.test(String(c.login)) && typeof c.texte === "string" && c.texte.trim())
+    .slice(0, MAX_COMMENTAIRES)
+    .map((c) => ({
+      id: String(c.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 6)).slice(0, 40),
+      login: String(c.login),
+      texte: c.texte.trim().slice(0, MAX_COMMENTAIRE),
+      date: isNaN(Date.parse(c.date)) ? new Date().toISOString() : new Date(c.date).toISOString(),
+    }));
+}
+
+// Toutes les clés "img:..." du stockage (le KV renvoie 1000 clés par page)
+async function listerImages(env) {
+  const ids = [];
+  let curseur;
+  do {
+    const page = await env.REDIFS.list({ prefix: "img:", cursor: curseur });
+    ids.push(...page.keys.map((k) => k.name.slice(4)));
+    curseur = page.list_complete ? null : page.cursor;
+  } while (curseur);
+  return ids;
+}
+
+// Likes et commentaires de toutes les rediffs
+async function toutesReactions(env, redifs) {
+  return Promise.all(
+    redifs.map(async (r) => ({
+      redif: r,
+      likes: (await env.REDIFS.get(`likes:${r.id}`, "json")) || [],
+      commentaires: (await env.REDIFS.get(`commentaires:${r.id}`, "json")) || [],
+    }))
+  );
+}
+
+async function administration(requete, env, url, moi, action, cible) {
+  const methode = requete.method;
+
+  if (methode === "GET" && action === "stats") {
+    const redifs = await lireRedifs(env);
+    const [reactionsParRedif, images, moderateurs, bannis] = await Promise.all([
+      toutesReactions(env, redifs),
+      listerImages(env),
+      lireModerateurs(env),
+      lireBannis(env),
+    ]);
+    const viewers = new Set();
+    for (const r of reactionsParRedif) {
+      r.likes.forEach((l) => viewers.add(l));
+      r.commentaires.forEach((c) => viewers.add(c.login));
+    }
+    return json({
+      redifs: redifs.length,
+      likes: reactionsParRedif.reduce((n, r) => n + r.likes.length, 0),
+      commentaires: reactionsParRedif.reduce((n, r) => n + r.commentaires.length, 0),
+      viewers: viewers.size,
+      images: images.length,
+      moderateurs: moderateurs.length,
+      bannis: bannis.length,
+      top: reactionsParRedif
+        .map((r) => ({ id: r.redif.id, titre: r.redif.titre, likes: r.likes.length, commentaires: r.commentaires.length }))
+        .sort((a, b) => b.likes + b.commentaires - (a.likes + a.commentaires))
+        .slice(0, 5),
+    });
+  }
+
+  if (methode === "GET" && action === "commentaires") {
+    const tous = (await toutesReactions(env, await lireRedifs(env))).flatMap((r) =>
+      r.commentaires.map((c) => ({ ...c, redif: r.redif.id, redifTitre: r.redif.titre }))
+    );
+    return json(tous.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 500));
+  }
+
+  if (action === "bannis") {
+    const bannis = await lireBannis(env);
+    if (methode === "GET" && !cible) return json(bannis);
+
+    if (methode === "POST" && !cible) {
+      const corps = await requete.json().catch(() => ({}));
+      const login = String(corps.login || "").trim().toLowerCase();
+      if (!LOGIN_TWITCH.test(login)) return erreur("Pseudo Twitch invalide.", 400);
+      const equipe = [...proprietaires(env), ...(await lireModerateurs(env))];
+      if (equipe.includes(login)) return erreur("Impossible de bannir un propriétaire ou un modérateur.", 400);
+      if (!bannis.some((b) => b.login === login)) {
+        bannis.push({ login, date: new Date().toISOString(), par: moi.login });
+        await env.REDIFS.put("bannis", JSON.stringify(bannis));
+      }
+      let supprimes = 0;
+      if (corps.purger) {
+        for (const r of await toutesReactions(env, await lireRedifs(env))) {
+          const restants = r.commentaires.filter((c) => c.login !== login);
+          if (restants.length !== r.commentaires.length) {
+            supprimes += r.commentaires.length - restants.length;
+            await env.REDIFS.put(`commentaires:${r.redif.id}`, JSON.stringify(restants));
+          }
+        }
+      }
+      return json({ ok: true, supprimes });
+    }
+
+    if (methode === "DELETE" && cible) {
+      await env.REDIFS.put("bannis", JSON.stringify(bannis.filter((b) => b.login !== cible.toLowerCase())));
+      return json({ ok: true });
+    }
+  }
+
+  if (methode === "GET" && action === "images") {
+    const redifs = await lireRedifs(env);
+    const ids = await listerImages(env);
+    return json(
+      ids.map((id) => {
+        const adresse = `${url.origin}/images/${id}`;
+        const utilisations = redifs.flatMap((r) =>
+          Object.entries(r.imagesChapitres || {})
+            .filter(([, lien]) => lien === adresse)
+            .map(([chapitre]) => ({ redif: r.id, titre: r.titre, chapitre }))
+        );
+        return { id, url: adresse, utilisations };
+      })
+    );
+  }
+
+  if (action === "moderateurs") {
+    if (methode === "GET") return json({ proprietaires: proprietaires(env), moderateurs: await lireModerateurs(env) });
+    if (methode === "PUT") {
+      if (!moi.proprietaire) return erreur("Seul le propriétaire du site peut gérer les modérateurs.", 403);
+      const corps = await requete.json().catch(() => ({}));
+      const liste = nettoyerLogins(corps.moderateurs, MAX_MODERATEURS).filter((l) => !proprietaires(env).includes(l));
+      await env.REDIFS.put("moderateurs", JSON.stringify(liste));
+      return json({ proprietaires: proprietaires(env), moderateurs: liste });
+    }
+  }
+
+  if (methode === "GET" && action === "export") {
+    const redifs = await lireRedifs(env);
+    const reactionsParRedif = await toutesReactions(env, redifs);
+    const [infos, parametres, moderateurs, bannis, images] = await Promise.all([
+      env.REDIFS.get("infos", "json"),
+      env.REDIFS.get("parametres", "json"),
+      lireModerateurs(env),
+      lireBannis(env),
+      listerImages(env),
+    ]);
+    return json({
+      format: "sauvegarde-site-rediffs",
+      version: 1,
+      date: new Date().toISOString(),
+      redifs,
+      infos,
+      parametres,
+      moderateurs,
+      bannis,
+      likes: Object.fromEntries(reactionsParRedif.map((r) => [r.redif.id, r.likes])),
+      commentaires: Object.fromEntries(reactionsParRedif.map((r) => [r.redif.id, r.commentaires])),
+      images, // seulement la liste : les fichiers restent sur le serveur
+    });
+  }
+
+  if (methode === "POST" && action === "import") {
+    if (!moi.proprietaire) return erreur("Seul le propriétaire du site peut restaurer une sauvegarde.", 403);
+    const s = await requete.json().catch(() => null);
+    if (!s || s.format !== "sauvegarde-site-rediffs" || !Array.isArray(s.redifs)) {
+      return erreur("Ce fichier n'est pas une sauvegarde du site.", 400);
+    }
+    // Tout est revérifié comme si c'était saisi à la main
+    const redifs = [];
+    for (const brute of s.redifs) {
+      const { redif, erreur: msg } = nettoyer(brute);
+      if (msg) return erreur(`Rediff « ${brute?.titre || "?"} » : ${msg}`, 400);
+      redif.id = /^[\w-]{1,80}$/.test(brute.id || "") ? brute.id : nouvelId(redif.titre);
+      redifs.push(redif);
+    }
+    let infos = null;
+    if (s.infos != null) {
+      const r = nettoyerInfos(s.infos);
+      if (r.erreur) return erreur(`Cartes Info : ${r.erreur}`, 400);
+      infos = r.infos;
+    }
+    let parametres = null;
+    if (s.parametres != null) {
+      const r = nettoyerParametres(s.parametres);
+      if (r.erreur) return erreur(`Réglages : ${r.erreur}`, 400);
+      parametres = r.parametres;
+    }
+
+    // On efface les likes / commentaires des rediffs qui ne sont plus là
+    const ids = new Set(redifs.map((r) => r.id));
+    for (const ancienne of await lireRedifs(env)) {
+      if (!ids.has(ancienne.id)) {
+        await Promise.all([env.REDIFS.delete(`likes:${ancienne.id}`), env.REDIFS.delete(`commentaires:${ancienne.id}`)]);
+      }
+    }
+    await ecrireRedifs(env, redifs);
+    await (infos ? env.REDIFS.put("infos", JSON.stringify(infos)) : env.REDIFS.delete("infos"));
+    await (parametres ? env.REDIFS.put("parametres", JSON.stringify(parametres)) : env.REDIFS.delete("parametres"));
+    await env.REDIFS.put("moderateurs", JSON.stringify(nettoyerLogins(s.moderateurs, MAX_MODERATEURS)));
+    const bannis = (Array.isArray(s.bannis) ? s.bannis : [])
+      .filter((b) => LOGIN_TWITCH.test(String(b?.login)))
+      .map((b) => ({ login: b.login, date: String(b.date || ""), par: String(b.par || "") }));
+    await env.REDIFS.put("bannis", JSON.stringify(bannis));
+    for (const id of ids) {
+      await env.REDIFS.put(`likes:${id}`, JSON.stringify(nettoyerLogins(s.likes?.[id], 100000)));
+      await env.REDIFS.put(`commentaires:${id}`, JSON.stringify(nettoyerCommentaires(s.commentaires?.[id])));
+    }
+    return json({ ok: true, redifs: redifs.length });
+  }
+
+  return erreur("Route inconnue.", 404);
 }
 
 function nouvelId(titre) {
@@ -184,6 +469,10 @@ export default {
         return json(await env.REDIFS.get("infos", "json"), 200, { "Cache-Control": "no-store" });
       }
 
+      if (requete.method === "GET" && ressource === "parametres" && !id) {
+        return json(await env.REDIFS.get("parametres", "json"), 200, { "Cache-Control": "no-store" });
+      }
+
       if (requete.method === "GET" && ressource === "images" && id) {
         const { value, metadata } = await env.REDIFS.getWithMetadata(`img:${id}`, "arrayBuffer");
         if (!value) return erreur("Image introuvable.", 404);
@@ -201,7 +490,7 @@ export default {
       const moi = await utilisateur(requete, env);
 
       if (requete.method === "GET" && ressource === "moi") {
-        return moi ? json(moi) : erreur("Non connecté.", 401);
+        return moi ? json({ ...moi, version: VERSION_SERVEUR }) : erreur("Non connecté.", 401);
       }
 
       /* ----- Likes et commentaires (ouverts à tous les comptes Twitch) ----- */
@@ -214,6 +503,7 @@ export default {
         }
 
         if (!moi) return erreur("Connecte-toi avec Twitch.", 401);
+        if (moi.banni && requete.method !== "DELETE") return erreur("Ton compte a été banni : tu ne peux plus liker ni commenter.", 403);
 
         if (requete.method === "POST" && ressource === "likes") {
           const cle = `likes:${id}`;
@@ -268,7 +558,7 @@ export default {
       /* ----- Tout le reste est réservé à l'admin ----- */
 
       if (!moi) return erreur("Connecte-toi avec Twitch.", 401);
-      if (!moi.admin) return erreur("Ce compte Twitch n'a pas le droit de publier.", 403);
+      if (!moi.admin) return erreur("Ce compte Twitch n'a pas accès à l'administration.", 403);
 
       if (requete.method === "GET" && ressource === "apercu") {
         const lien = url.searchParams.get("url") || "";
@@ -278,6 +568,20 @@ export default {
         if (!rep.ok) return erreur("Vidéo introuvable ou privée.", 404);
         const infos = await rep.json();
         return json({ titre: infos.title || "" });
+      }
+
+      if (ressource === "admin") return await administration(requete, env, url, moi, id, sousId);
+
+      if (requete.method === "PUT" && ressource === "parametres" && !id) {
+        const { parametres, erreur: msg } = nettoyerParametres(await requete.json().catch(() => null));
+        if (msg) return erreur(msg, 400);
+        await env.REDIFS.put("parametres", JSON.stringify(parametres));
+        return json(parametres);
+      }
+
+      if (requete.method === "DELETE" && ressource === "images" && id) {
+        await env.REDIFS.delete(`img:${id}`);
+        return json({ ok: true });
       }
 
       if (requete.method === "POST" && ressource === "images" && !id) {

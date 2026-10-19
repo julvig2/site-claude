@@ -67,6 +67,42 @@ function seConnecter() {
 
 function deconnexion() {
   stockage("effacer", CLE_JETON);
+  stockage("effacer", CLE_MOI);
+}
+
+/*
+ * Qui est connecté ? { login, admin, proprietaire, banni, version } ou null.
+ * Gardé 10 minutes pour ne pas redemander à chaque page.
+ */
+const CLE_MOI = "julvig_moi";
+
+function moiEnCache() {
+  const jeton = stockage("lire", CLE_JETON);
+  if (!jeton) return null;
+  try {
+    const c = JSON.parse(stockage("lire", CLE_MOI) || "null");
+    if (c && c.jeton === jeton.slice(-8) && Date.now() - c.t < 10 * 60 * 1000) return c.moi;
+  } catch {
+    // cache illisible : on redemande
+  }
+  return null;
+}
+
+async function quiSuisJe({ forcer = false } = {}) {
+  const jeton = stockage("lire", CLE_JETON);
+  if (!jeton || !connexionPossible()) return null;
+  if (!forcer) {
+    const cache = moiEnCache();
+    if (cache) return cache;
+  }
+  try {
+    const moi = await appelApi("/moi");
+    stockage("ecrire", CLE_MOI, JSON.stringify({ jeton: jeton.slice(-8), t: Date.now(), moi }));
+    return moi;
+  } catch (e) {
+    if (e.statut === 401) deconnexion(); // jeton expiré
+    return null;
+  }
 }
 
 /*

@@ -12,12 +12,14 @@ Il n'y a rien à installer : ce sont juste des fichiers HTML, CSS et JavaScript.
 | `video.html?id=...` | Le lecteur d'une rediff, la frise des chapitres (avec une image par chapitre), les likes et commentaires (connexion Twitch), et des suggestions |
 | `autres.html` | « Info » : planning, setup, clips… (modifiable depuis l'espace admin) |
 | `a-propos.html` | Présentation et liens vers les réseaux |
-| `admin.html` | Espace admin : connexion avec Twitch pour gérer les rediffs et les cartes Info |
+| `admin.html` | **Administration** (visible dans le menu seulement pour le propriétaire et les modérateurs) : tableau de bord, rediffs, Info, commentaires et bannissements, réglages du site, images, équipe, sauvegarde |
 | `soutenir.html` | Page de dons avec le panneau Ko-fi intégré (carte bancaire ou PayPal) |
 
 ## Modifier le contenu
 
-**Tout se passe dans `assets/js/contenu.js`.** Tu peux y changer :
+Le plus simple : **Connexion** (en haut à droite) avec ton compte Twitch, puis l'onglet **⚙ Administration**. Tu y gères les rediffs, les cartes Info, les commentaires, les réglages (slogan, À propos, chaînes, liens), les images, les modérateurs et les sauvegardes.
+
+Les valeurs par défaut sont dans `assets/js/contenu.js` :
 
 - ton pseudo, ton slogan et ta chaîne Twitch (pour le bouton « Le live ») ;
 - ton lien de dons (bouton « Soutenir ») et ton invitation Discord (bloc « La commu » de l'accueil) ;
@@ -28,7 +30,7 @@ Il n'y a rien à installer : ce sont juste des fichiers HTML, CSS et JavaScript.
 
 ### Ajouter une rediff
 
-Depuis l'**espace admin** du site (`admin.html`) : connecte-toi avec Twitch, colle le lien YouTube de ta rediff (mise en « non répertoriée ») et clique sur **Publier**.
+Depuis l'onglet **Rediffs** de l'**Administration** (`admin.html`) : connecte-toi avec Twitch, colle le lien YouTube de ta rediff (mise en « non répertoriée ») et clique sur **Publier**.
 Pour installer l'espace admin la première fois, suis le guide [`worker/INSTALLATION.md`](worker/INSTALLATION.md).
 
 Tu peux aussi ajouter une rediff à la main dans la liste `redifs` de `assets/js/contenu.js` :
@@ -48,7 +50,11 @@ Le bouton du menu affiche **Live OFF** (gris) quand tu ne streames pas et **EN L
 
 ## Likes et commentaires
 
-Sur chaque rediff publiée depuis l'espace admin, les viewers peuvent se connecter avec Twitch pour liker et commenter (500 caractères max, un commentaire toutes les 15 secondes). Chacun peut supprimer ses commentaires ; l'admin peut supprimer tous les commentaires.
+Sur chaque rediff publiée depuis l'espace admin, les viewers peuvent se connecter avec Twitch pour liker et commenter (500 caractères max, un commentaire toutes les 15 secondes). Chacun peut supprimer ses commentaires. Dans l'Administration, l'onglet **Commentaires** liste tous les commentaires du site : tu peux les supprimer et **bannir** un compte (il ne peut plus liker ni commenter).
+
+## Équipe
+
+Le **propriétaire** est le pseudo Twitch de la variable `ADMIN_LOGIN` dans Cloudflare. Depuis l'onglet **Équipe**, il peut ajouter des **modérateurs** : ils ont accès à toute l'administration, sauf la gestion de l'équipe et la restauration d'une sauvegarde.
 
 ## Mettre le site en ligne (gratuit, avec GitHub Pages)
 

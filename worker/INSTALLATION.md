@@ -69,8 +69,13 @@ Ces deux informations ne sont **pas secrètes** : tu peux les envoyer à Claude 
 3. **Se connecter avec Twitch**, puis colle le lien YouTube. Le titre se remplit tout seul. Complète le reste et clique sur **Publier**.
 4. La rediff apparaît tout de suite sur le site. Tu peux la **modifier** ou la **supprimer** depuis la liste en dessous.
 
-Seul le compte Twitch indiqué dans `ADMIN_LOGIN` peut publier. Les autres comptes voient « Ce compte Twitch n'a pas accès ».
-Pour ajouter un modérateur, mets plusieurs pseudos séparés par des virgules : `julvig2,pseudo_du_modo`.
+Seul le compte Twitch indiqué dans `ADMIN_LOGIN` (le propriétaire) et ses modérateurs ont accès à l'Administration.
+Les modérateurs s'ajoutent depuis l'onglet **Équipe** de l'Administration.
+
+## Mettre à jour le serveur
+
+Quand le site reçoit une nouvelle fonction, l'Administration affiche « Le code du serveur Cloudflare n'est pas à jour ».
+Il suffit alors de recoller `worker/worker.js` dans Cloudflare : **julvig-api → Edit code**, tout effacer, coller, **Deploy**.
 
 ## Limites gratuites de Cloudflare
 

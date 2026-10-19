@@ -1,4 +1,5 @@
-/* Espace admin : publication des rediffs et des cartes Info. La connexion Twitch est dans compte.js. */
+/* Administration du site : tableau de bord, rediffs, Info, commentaires, réglages, images, équipe, sauvegarde.
+   La connexion Twitch est dans compte.js. */
 
 // Reconnaît un lien YouTube ou Twitch et renvoie { source, video }.
 function analyserLien(lien) {
@@ -16,9 +17,22 @@ function lienDepuisRedif(r) {
 }
 
 function seDeconnecter() {
-  deconnexion(); // défini dans compte.js
-  afficherAdmin();
+  deconnexionSite(); // défini dans main.js
 }
+
+// Doit correspondre à VERSION_SERVEUR dans worker/worker.js
+const VERSION_SERVEUR_ATTENDUE = 6;
+
+const ONGLETS = [
+  ["tableau", "📊 Tableau de bord"],
+  ["rediffs", "🎬 Rediffs"],
+  ["info", "ℹ️ Info"],
+  ["commentaires", "💬 Commentaires"],
+  ["reglages", "⚙ Réglages du site"],
+  ["images", "🖼 Images"],
+  ["equipe", "👥 Équipe"],
+  ["sauvegarde", "💾 Sauvegarde"],
+];
 
 /* ---------- Affichage ---------- */
 
@@ -37,7 +51,7 @@ async function afficherAdmin(avertissement = "") {
 
   if (!stockage("lire", CLE_JETON)) {
     zone.innerHTML = `${avertissement ? message(avertissement, "erreur") : ""}
-      <p>Connecte-toi avec ton compte Twitch pour publier des rediffs.</p>${boutonConnexion}`;
+      <p>Connecte-toi avec ton compte Twitch pour accéder à l'administration.</p>${boutonConnexion}`;
     $("#connexion").onclick = seConnecter;
     return;
   }
@@ -52,16 +66,33 @@ async function afficherAdmin(avertissement = "") {
     return;
   }
 
-  const barre = `<div class="barre-admin">Connecté : <strong>${echapper(moi.login)}</strong>
+  MOI_ADMIN = moi;
+  afficherEntete(moi); // l'onglet Administration apparaît dans le menu
+  const role = moi.proprietaire ? "Propriétaire" : moi.admin ? "Modérateur" : "Viewer";
+  const barre = `<div class="barre-admin">Connecté : <strong>${echapper(moi.login)}</strong> <span class="badge-role">${role}</span>
     <button class="btn btn-contour btn-petit" id="deconnexion">Se déconnecter</button></div>`;
 
   if (!moi.admin) {
-    zone.innerHTML = barre + message("Ce compte Twitch n'a pas accès à l'espace admin.", "erreur");
+    zone.innerHTML = barre + message("Ce compte Twitch n'a pas accès à l'administration.", "erreur");
     $("#deconnexion").onclick = seDeconnecter;
     return;
   }
 
+  const serveurAncien = !moi.version || moi.version < VERSION_SERVEUR_ATTENDUE;
   zone.innerHTML = `${barre}
+    ${
+      serveurAncien
+        ? message(
+            "⚠️ Le code du serveur Cloudflare n'est pas à jour : certaines parties de l'administration ne marcheront pas. Recolle worker/worker.js dans Cloudflare (julvig-api → Edit code → Deploy).",
+            "erreur"
+          )
+        : ""
+    }
+    <nav class="onglets" role="tablist">${ONGLETS.map(
+      ([cle, nom]) => `<button type="button" role="tab" data-onglet="${cle}" aria-selected="false">${nom}</button>`
+    ).join("")}</nav>
+    <section class="panneau" data-panneau="tableau" hidden><div id="panneau-tableau"></div></section>
+    <section class="panneau" data-panneau="rediffs" hidden>
     <form id="formulaire" class="formulaire" autocomplete="off">
       <h2 id="titre-formulaire">Publier une rediff</h2>
       <label>Lien de la vidéo YouTube *
@@ -92,7 +123,9 @@ async function afficherAdmin(avertissement = "") {
     </form>
     <h2>Rediffs publiées</h2>
     <div id="liste-admin"></div>
+    </section>
 
+    <section class="panneau" data-panneau="info" hidden>
     <form id="formulaire-info" class="formulaire" autocomplete="off">
       <h2 id="titre-formulaire-info">Ajouter une carte Info</h2>
       <div class="ligne ligne-2">
@@ -112,12 +145,486 @@ async function afficherAdmin(avertissement = "") {
     </form>
     <h2>Cartes Info</h2>
     <p class="meta">Elles s'affichent dans cet ordre sur la page Info. Les 3 premières sont aussi sur l'accueil.</p>
-    <div id="liste-infos"></div>`;
+    <div id="liste-infos"></div>
+    </section>
+    <section class="panneau" data-panneau="commentaires" hidden><div id="panneau-commentaires"></div></section>
+    <section class="panneau" data-panneau="reglages" hidden><div id="panneau-reglages"></div></section>
+    <section class="panneau" data-panneau="images" hidden><div id="panneau-images"></div></section>
+    <section class="panneau" data-panneau="equipe" hidden><div id="panneau-equipe"></div></section>
+    <section class="panneau" data-panneau="sauvegarde" hidden><div id="panneau-sauvegarde"></div></section>`;
 
   $("#deconnexion").onclick = seDeconnecter;
+  $(".onglets").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-onglet]");
+    if (b) ouvrirOnglet(b.dataset.onglet);
+  });
   brancherFormulaire();
+  const depart = location.hash.slice(1);
+  ouvrirOnglet(ONGLETS.some(([cle]) => cle === depart) ? depart : "tableau");
   await rafraichirListe();
   await brancherInfos();
+}
+
+let MOI_ADMIN = null;
+
+const CHARGEURS = {
+  tableau: () => chargerTableau(),
+  commentaires: () => chargerCommentaires(),
+  reglages: () => afficherReglages(),
+  images: () => chargerImages(),
+  equipe: () => chargerEquipe(),
+  sauvegarde: () => afficherSauvegarde(),
+};
+
+function ouvrirOnglet(nom) {
+  document.querySelectorAll("[data-onglet]").forEach((b) => b.setAttribute("aria-selected", b.dataset.onglet === nom));
+  document.querySelectorAll("[data-panneau]").forEach((p) => (p.hidden = p.dataset.panneau !== nom));
+  history.replaceState(null, "", `#${nom}`);
+  CHARGEURS[nom]?.();
+}
+
+function chargement(zone) {
+  zone.innerHTML = `<p class="meta">Chargement…</p>`;
+}
+
+function erreurServeur(zone, err) {
+  if (err.statut === 401) return afficherAdmin("Ta connexion a expiré, reconnecte-toi.");
+  const ancien = err.statut === 404 && /route inconnue/i.test(err.message);
+  zone.innerHTML = message(
+    ancien
+      ? "Le serveur Cloudflare ne connaît pas encore cette fonction : recolle worker/worker.js dans Cloudflare (Edit code → Deploy)."
+      : `Erreur : ${err.message}`,
+    "erreur"
+  );
+}
+
+const nombre = (n) =>
+  new Intl.NumberFormat("fr-FR", n >= 10000 ? { notation: "compact", maximumFractionDigits: 1 } : {}).format(n);
+
+/* ---------- Tableau de bord ---------- */
+
+async function chargerTableau() {
+  const zone = $("#panneau-tableau");
+  chargement(zone);
+  let st, coms;
+  try {
+    [st, coms] = await Promise.all([appelApi("/admin/stats"), appelApi("/admin/commentaires")]);
+  } catch (err) {
+    return erreurServeur(zone, err);
+  }
+  const tuiles = [
+    ["Rediffs", st.redifs],
+    ["Likes", st.likes],
+    ["Commentaires", st.commentaires],
+    ["Viewers actifs", st.viewers, "comptes qui ont liké ou commenté"],
+    ["Images envoyées", st.images],
+    ["Comptes bannis", st.bannis],
+  ];
+  zone.innerHTML = `
+    <div class="tuiles">${tuiles
+      .map(
+        ([label, valeur, aide]) => `
+      <div class="tuile"${aide ? ` title="${aide}"` : ""}>
+        <span class="tuile-label">${label}</span>
+        <span class="tuile-valeur">${nombre(valeur)}</span>
+      </div>`
+      )
+      .join("")}</div>
+    <div class="deux-colonnes">
+      <div>
+        <h2>Rediffs les plus populaires</h2>
+        ${
+          st.top.length
+            ? `<table class="tableau-admin">
+                <thead><tr><th>Rediff</th><th>Likes</th><th>Commentaires</th></tr></thead>
+                <tbody>${st.top
+                  .map(
+                    (r) => `<tr><td><a href="video.html?id=${encodeURIComponent(r.id)}">${echapper(r.titre)}</a></td>
+                      <td>${nombre(r.likes)}</td><td>${nombre(r.commentaires)}</td></tr>`
+                  )
+                  .join("")}</tbody>
+              </table>`
+            : `<p class="vide">Aucune rediff pour l'instant.</p>`
+        }
+      </div>
+      <div>
+        <h2>Derniers commentaires</h2>
+        ${listeCommentaires(coms.slice(0, 5), false) || `<p class="vide">Aucun commentaire pour l'instant.</p>`}
+        ${coms.length ? `<button class="btn btn-contour btn-petit" data-aller="commentaires">Voir tous les commentaires</button>` : ""}
+      </div>
+    </div>`;
+  zone.querySelector("[data-aller]")?.addEventListener("click", () => ouvrirOnglet("commentaires"));
+}
+
+/* ---------- Commentaires et bannissements ---------- */
+
+function listeCommentaires(coms, actions) {
+  if (!coms.length) return "";
+  return `<ul class="commentaires">${coms
+    .map(
+      (c) => `
+    <li class="commentaire">
+      <div class="commentaire-tete">
+        <strong>${echapper(c.login)}</strong>
+        <span class="meta">${ilYA(c.date)} · sur <a href="video.html?id=${encodeURIComponent(c.redif)}">${echapper(c.redifTitre)}</a></span>
+        ${
+          actions
+            ? `<span class="actions-com">
+                <button class="lien-bouton" data-suppr-com="${echapper(c.id)}" data-redif="${echapper(c.redif)}">Supprimer</button>
+                <button class="lien-bouton danger" data-bannir="${echapper(c.login)}">Bannir</button>
+              </span>`
+            : ""
+        }
+      </div>
+      <p>${echapper(c.texte)}</p>
+    </li>`
+    )
+    .join("")}</ul>`;
+}
+
+async function chargerCommentaires(retour = "") {
+  const zone = $("#panneau-commentaires");
+  chargement(zone);
+  let coms, bannis;
+  try {
+    [coms, bannis] = await Promise.all([appelApi("/admin/commentaires"), appelApi("/admin/bannis")]);
+  } catch (err) {
+    return erreurServeur(zone, err);
+  }
+  zone.innerHTML = `
+    ${retour}
+    <h2>Tous les commentaires (${coms.length})</h2>
+    <input type="search" id="filtre-com" class="champ-recherche" placeholder="Rechercher un pseudo, un mot, une rediff…">
+    <div id="liste-com">${listeCommentaires(coms, true) || `<p class="vide">Aucun commentaire pour l'instant.</p>`}</div>
+
+    <h2>Comptes bannis (${bannis.length})</h2>
+    <p class="meta">Un compte banni ne peut plus liker ni commenter. Il peut toujours regarder les rediffs.</p>
+    <form id="form-bannir" class="ligne-formulaire" autocomplete="off">
+      <input name="login" placeholder="Pseudo Twitch" required maxlength="25">
+      <label class="case"><input type="checkbox" name="purger"> Supprimer aussi tous ses commentaires</label>
+      <button class="btn btn-danger btn-petit" type="submit">Bannir</button>
+    </form>
+    ${
+      bannis.length
+        ? `<ul class="liste-simple">${bannis
+            .map(
+              (b) => `<li><strong>${echapper(b.login)}</strong>
+                <span class="meta">${b.date ? `banni ${ilYA(b.date)}` : ""}${b.par ? ` par ${echapper(b.par)}` : ""}</span>
+                <button class="btn btn-contour btn-petit" data-debannir="${echapper(b.login)}">Débannir</button></li>`
+            )
+            .join("")}</ul>`
+        : `<p class="vide">Personne n'est banni.</p>`
+    }`;
+
+  $("#filtre-com").addEventListener("input", (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    const filtres = coms.filter((c) => `${c.login} ${c.texte} ${c.redifTitre}`.toLowerCase().includes(q));
+    $("#liste-com").innerHTML = listeCommentaires(filtres, true) || `<p class="vide">Aucun commentaire ne correspond.</p>`;
+  });
+
+  const bannir = async (login, purger) => {
+    try {
+      const r = await appelApi("/admin/bannis", { method: "POST", body: JSON.stringify({ login, purger }) });
+      chargerCommentaires(
+        message(`${login} est banni.${r.supprimes ? ` ${r.supprimes} commentaire(s) supprimé(s).` : ""}`, "ok")
+      );
+    } catch (err) {
+      chargerCommentaires(message(err.message, "erreur"));
+    }
+  };
+
+  // onclick (et pas addEventListener) : la zone est redessinée à chaque action
+  zone.onclick = async (e) => {
+    const suppr = e.target.closest("[data-suppr-com]");
+    const ban = e.target.closest("[data-bannir]");
+    const deban = e.target.closest("[data-debannir]");
+    if (suppr && confirm("Supprimer ce commentaire ?")) {
+      try {
+        await appelApi(`/commentaires/${encodeURIComponent(suppr.dataset.redif)}/${encodeURIComponent(suppr.dataset.supprCom)}`, { method: "DELETE" });
+        chargerCommentaires(message("Commentaire supprimé.", "ok"));
+      } catch (err) {
+        chargerCommentaires(message(err.message, "erreur"));
+      }
+    }
+    if (ban) {
+      const login = ban.dataset.bannir;
+      if (!confirm(`Bannir ${login} ? Il ne pourra plus liker ni commenter.`)) return;
+      const nb = coms.filter((c) => c.login === login).length;
+      bannir(login, nb > 0 && confirm(`Supprimer aussi ses ${nb} commentaire(s) ?`));
+    }
+    if (deban) {
+      try {
+        await appelApi(`/admin/bannis/${encodeURIComponent(deban.dataset.debannir)}`, { method: "DELETE" });
+        chargerCommentaires(message(`${deban.dataset.debannir} n'est plus banni.`, "ok"));
+      } catch (err) {
+        chargerCommentaires(message(err.message, "erreur"));
+      }
+    }
+  };
+
+  $("#form-bannir").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target;
+    bannir(f.login.value.trim().toLowerCase(), f.purger.checked);
+  });
+}
+
+/* ---------- Réglages du site ---------- */
+
+function ligneReseau(r = { nom: "", url: "" }) {
+  return `<div class="ligne-reseau">
+    <input name="reseau-nom" value="${echapper(r.nom)}" placeholder="Nom (ex : TikTok)" maxlength="30">
+    <input name="reseau-url" value="${echapper(r.url)}" placeholder="https://..." maxlength="500">
+    <button type="button" class="btn btn-contour btn-petit" data-retirer-reseau title="Retirer">✕</button>
+  </div>`;
+}
+
+function afficherReglages(retour = "") {
+  const zone = $("#panneau-reglages");
+  zone.innerHTML = `
+    <form id="form-reglages" class="formulaire" autocomplete="off">
+      <h2>Réglages du site</h2>
+      <label>Slogan de l'accueil<input name="slogan" maxlength="200" value="${echapper(SITE.slogan || "")}"></label>
+      <label>Texte de la page « À propos »<textarea name="aPropos" rows="5" maxlength="3000">${echapper(SITE.aPropos || "")}</textarea></label>
+      <div class="ligne ligne-2">
+        <label>Chaîne Twitch<input name="chaineTwitch" maxlength="40" value="${echapper(SITE.chaineTwitch || "")}">
+          <small>Pour le bouton Live. Vide = pas de détection Twitch.</small></label>
+        <label>Chaîne Kick<input name="chaineKick" maxlength="40" value="${echapper(SITE.chaineKick || "")}">
+          <small>Vide = pas de détection Kick.</small></label>
+      </div>
+      <div class="ligne ligne-2">
+        <label>Lien des dons (Ko-fi)<input name="don" type="url" maxlength="500" value="${echapper(SITE.don || "")}">
+          <small>Vide = bouton Soutenir caché.</small></label>
+        <label>Invitation Discord<input name="discord" type="url" maxlength="500" value="${echapper(SITE.discord || "")}">
+          <small>Vide = bloc Discord caché.</small></label>
+      </div>
+      <div>
+        <strong>Réseaux sociaux</strong>
+        <small class="meta"> (bas de page et page À propos)</small>
+        <div id="reseaux">${(SITE.reseaux || []).map(ligneReseau).join("")}</div>
+        <button type="button" class="btn btn-contour btn-petit" id="ajouter-reseau">+ Ajouter un réseau</button>
+      </div>
+      ${retour}
+      <div class="boutons"><button class="btn" type="submit">Enregistrer les réglages</button></div>
+    </form>`;
+
+  const f = $("#form-reglages");
+  $("#ajouter-reseau").onclick = () => $("#reseaux").insertAdjacentHTML("beforeend", ligneReseau());
+  $("#reseaux").addEventListener("click", (e) => e.target.closest("[data-retirer-reseau]")?.parentElement.remove());
+  f.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const reseaux = [...document.querySelectorAll(".ligne-reseau")].map((l) => ({
+      nom: l.querySelector("[name=reseau-nom]").value,
+      url: l.querySelector("[name=reseau-url]").value,
+    }));
+    const donnees = {
+      slogan: f.slogan.value,
+      aPropos: f.aPropos.value,
+      chaineTwitch: f.chaineTwitch.value,
+      chaineKick: f.chaineKick.value,
+      don: f.don.value,
+      discord: f.discord.value,
+      reseaux,
+    };
+    try {
+      const p = await appelApi("/parametres", { method: "PUT", body: JSON.stringify(donnees) });
+      appliquerParametres(p);
+      stockage("ecrire", CLE_PARAMETRES, JSON.stringify(p));
+      afficherEntete();
+      $("#pied").innerHTML = pied();
+      afficherReglages(message("Réglages enregistrés : ils sont déjà visibles sur le site.", "ok"));
+    } catch (err) {
+      if (err.statut === 401) return afficherAdmin("Ta connexion a expiré, reconnecte-toi.");
+      afficherReglages(message(err.message, "erreur"));
+    }
+  });
+}
+
+/* ---------- Images envoyées ---------- */
+
+async function chargerImages(retour = "") {
+  const zone = $("#panneau-images");
+  chargement(zone);
+  let images;
+  try {
+    images = await appelApi("/admin/images");
+  } catch (err) {
+    return erreurServeur(zone, err);
+  }
+  const inutilisees = images.filter((i) => !i.utilisations.length);
+  zone.innerHTML = `
+    ${retour}
+    <h2>Images envoyées (${images.length})</h2>
+    <p class="meta">Les images que tu as envoyées avec « 📁 Mon image ». Les jaquettes Twitch ne sont pas stockées ici.</p>
+    ${
+      inutilisees.length
+        ? `<button class="btn btn-contour btn-petit" id="nettoyer-images">🧹 Supprimer les ${inutilisees.length} image(s) inutilisée(s)</button>`
+        : ""
+    }
+    <div class="grille-images">${
+      images
+        .map(
+          (i) => `
+      <div class="carte-image">
+        <img src="${echapper(i.url)}" alt="" loading="lazy">
+        <p class="meta">${
+          i.utilisations.length
+            ? `Utilisée dans : ${i.utilisations.map((u) => `${echapper(u.titre)} (${echapper(u.chapitre)})`).join(", ")}`
+            : "Pas utilisée"
+        }</p>
+        <button class="btn btn-danger btn-petit" data-suppr-image="${echapper(i.id)}" data-utilisee="${i.utilisations.length}">Supprimer</button>
+      </div>`
+        )
+        .join("") || `<p class="vide">Aucune image envoyée.</p>`
+    }</div>`;
+
+  const supprimer = (id) => appelApi(`/images/${encodeURIComponent(id)}`, { method: "DELETE" });
+  zone.querySelectorAll("[data-suppr-image]").forEach((b) => {
+    b.onclick = async () => {
+      const utilisee = Number(b.dataset.utilisee);
+      if (!confirm(utilisee ? "Cette image est utilisée dans une rediff : elle disparaîtra de la frise. Supprimer quand même ?" : "Supprimer cette image ?")) return;
+      try {
+        await supprimer(b.dataset.supprImage);
+        chargerImages(message("Image supprimée.", "ok"));
+      } catch (err) {
+        chargerImages(message(err.message, "erreur"));
+      }
+    };
+  });
+  $("#nettoyer-images")?.addEventListener("click", async () => {
+    if (!confirm(`Supprimer les ${inutilisees.length} image(s) qui ne servent à rien ?`)) return;
+    try {
+      for (const i of inutilisees) await supprimer(i.id);
+      chargerImages(message(`${inutilisees.length} image(s) supprimée(s).`, "ok"));
+    } catch (err) {
+      chargerImages(message(err.message, "erreur"));
+    }
+  });
+}
+
+/* ---------- Équipe : propriétaire et modérateurs ---------- */
+
+async function chargerEquipe(retour = "") {
+  const zone = $("#panneau-equipe");
+  chargement(zone);
+  let equipe;
+  try {
+    equipe = await appelApi("/admin/moderateurs");
+  } catch (err) {
+    return erreurServeur(zone, err);
+  }
+  const peutModifier = MOI_ADMIN?.proprietaire;
+  zone.innerHTML = `
+    ${retour}
+    <h2>Propriétaire</h2>
+    <ul class="liste-simple">${equipe.proprietaires.map((l) => `<li><strong>${echapper(l)}</strong> <span class="badge-role">Propriétaire</span></li>`).join("")}</ul>
+    <p class="meta">Le propriétaire est défini dans Cloudflare (variable ADMIN_LOGIN) : il ne peut pas être retiré depuis le site.</p>
+
+    <h2>Modérateurs (${equipe.moderateurs.length})</h2>
+    <p class="meta">Les modérateurs ont accès à toute l'administration (rediffs, Info, commentaires, réglages, images, sauvegarde),
+      sauf la gestion de l'équipe et la restauration d'une sauvegarde.</p>
+    ${
+      equipe.moderateurs.length
+        ? `<ul class="liste-simple">${equipe.moderateurs
+            .map(
+              (l) => `<li><strong>${echapper(l)}</strong>
+                ${peutModifier ? `<button class="btn btn-contour btn-petit" data-retirer-modo="${echapper(l)}">Retirer</button>` : ""}</li>`
+            )
+            .join("")}</ul>`
+        : `<p class="vide">Aucun modérateur.</p>`
+    }
+    ${
+      peutModifier
+        ? `<form id="form-modo" class="ligne-formulaire" autocomplete="off">
+            <input name="login" placeholder="Pseudo Twitch du modérateur" required maxlength="25">
+            <button class="btn btn-petit" type="submit">Ajouter</button>
+          </form>`
+        : message("Seul le propriétaire peut ajouter ou retirer des modérateurs.")
+    }`;
+  if (!peutModifier) return;
+
+  const enregistrer = async (liste, texte) => {
+    try {
+      await appelApi("/admin/moderateurs", { method: "PUT", body: JSON.stringify({ moderateurs: liste }) });
+      chargerEquipe(message(texte, "ok"));
+    } catch (err) {
+      chargerEquipe(message(err.message, "erreur"));
+    }
+  };
+  $("#form-modo").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const login = e.target.login.value.trim().toLowerCase();
+    if (!/^[a-z0-9_]{3,25}$/.test(login)) return chargerEquipe(message("Pseudo Twitch invalide.", "erreur"));
+    enregistrer([...equipe.moderateurs, login], `${login} est maintenant modérateur.`);
+  });
+  zone.querySelectorAll("[data-retirer-modo]").forEach((b) => {
+    b.onclick = () => {
+      const login = b.dataset.retirerModo;
+      if (confirm(`Retirer ${login} des modérateurs ?`)) enregistrer(equipe.moderateurs.filter((l) => l !== login), `${login} n'est plus modérateur.`);
+    };
+  });
+}
+
+/* ---------- Sauvegarde ---------- */
+
+function afficherSauvegarde(retour = "") {
+  const zone = $("#panneau-sauvegarde");
+  const proprietaire = MOI_ADMIN?.proprietaire;
+  zone.innerHTML = `
+    ${retour}
+    <h2>Télécharger une sauvegarde</h2>
+    <p class="meta">Un fichier avec toutes les données du site : rediffs, chapitres, cartes Info, réglages, likes, commentaires, équipe et bannis.
+      Les fichiers des images envoyées restent sur le serveur (seule leur liste est sauvegardée).</p>
+    <button class="btn" id="exporter">💾 Télécharger la sauvegarde</button>
+
+    <h2>Restaurer une sauvegarde</h2>
+    ${
+      proprietaire
+        ? `<p class="meta">⚠️ Remplace TOUTES les données actuelles du site par celles du fichier.</p>
+          <input type="file" id="fichier-sauvegarde" accept=".json,application/json" hidden>
+          <button class="btn btn-danger" id="importer">Restaurer depuis un fichier…</button>`
+        : message("Seul le propriétaire peut restaurer une sauvegarde.")
+    }`;
+
+  $("#exporter").onclick = async () => {
+    try {
+      const donnees = await appelApi("/admin/export");
+      const lien = document.createElement("a");
+      lien.href = URL.createObjectURL(new Blob([JSON.stringify(donnees, null, 2)], { type: "application/json" }));
+      lien.download = `sauvegarde-site-${new Date().toISOString().slice(0, 10)}.json`;
+      lien.click();
+      setTimeout(() => URL.revokeObjectURL(lien.href), 1000);
+      afficherSauvegarde(message(`Sauvegarde téléchargée (${donnees.redifs.length} rediff(s)).`, "ok"));
+    } catch (err) {
+      erreurServeur(zone, err);
+    }
+  };
+  if (!proprietaire) return;
+
+  const fichier = $("#fichier-sauvegarde");
+  $("#importer").onclick = () => fichier.click();
+  fichier.onchange = async () => {
+    const f = fichier.files[0];
+    fichier.value = "";
+    if (!f) return;
+    let donnees;
+    try {
+      donnees = JSON.parse(await f.text());
+    } catch {
+      return afficherSauvegarde(message("Ce fichier n'est pas une sauvegarde valide.", "erreur"));
+    }
+    const nb = Array.isArray(donnees.redifs) ? donnees.redifs.length : 0;
+    const date = donnees.date ? new Date(donnees.date).toLocaleString("fr-FR") : "date inconnue";
+    if (!confirm(`Restaurer la sauvegarde du ${date} (${nb} rediff(s)) ?\n\nToutes les données actuelles du site seront remplacées.`)) return;
+    try {
+      const r = await appelApi("/admin/import", { method: "POST", body: JSON.stringify(donnees) });
+      alert(`Sauvegarde restaurée : ${r.redifs} rediff(s). La page va se recharger.`);
+      location.reload();
+    } catch (err) {
+      if (err.statut === 401) return afficherAdmin("Ta connexion a expiré, reconnecte-toi.");
+      afficherSauvegarde(message(err.message, "erreur"));
+    }
+  };
 }
 
 let enEdition = null; // id de la rediff en cours de modification

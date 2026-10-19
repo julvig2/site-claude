@@ -99,16 +99,28 @@ function redifsTriees() {
 
 /* ---------- En-tête et pied de page communs ---------- */
 
-function entete(page) {
+// moi = compte Twitch connecté ({ login, admin, ... }), null si personne,
+// undefined si on ne sait pas encore (vérification en cours)
+function entete(page, moi) {
   const liens = [
     ["accueil", "index.html", "Accueil"],
     ["redifs", "redifs.html", "Rediffs"],
     ["autres", "autres.html", "Info"],
     ["a-propos", "a-propos.html", "À propos"],
   ];
+  // L'onglet Administration n'apparaît que pour le propriétaire et les modérateurs
+  if (moi?.admin) liens.push(["admin", "admin.html", "⚙ Administration"]);
   const nav = liens
-    .map(([cle, href, txt]) => `<a href="${href}"${cle === page ? ' aria-current="page"' : ""}>${txt}</a>`)
+    .map(([cle, href, txt]) => `<a href="${href}"${cle === "admin" ? ' class="lien-administration"' : ""}${cle === page ? ' aria-current="page"' : ""}>${txt}</a>`)
     .join("");
+  const compte = !connexionPossible()
+    ? ""
+    : moi
+      ? `<span class="compte"><span class="compte-nom" title="Connecté avec Twitch">${echapper(moi.login)}</span>
+          <button class="lien-bouton" data-deconnexion>Déconnexion</button></span>`
+      : moi === undefined && connecte()
+        ? `<span class="compte"></span>`
+        : `<button class="btn-connexion" data-connexion>Connexion</button>`;
   const direct = SITE.chaineTwitch || SITE.chaineKick
     ? `<a class="btn-direct hors-ligne" href="${SITE.chaineTwitch ? PLATEFORMES.twitch.url() : PLATEFORMES.kick.url()}" target="_blank" rel="noopener"><span class="point"></span><span class="etat-live">Live OFF</span></a>`
     : "";
@@ -119,7 +131,7 @@ function entete(page) {
     <div class="conteneur entete-inner">
       <a class="logo" href="index.html">${echapper(SITE.nom)}</a>
       <button class="burger" aria-label="Menu" aria-expanded="false">☰</button>
-      <nav class="nav">${nav}${don}${direct}</nav>
+      <nav class="nav">${nav}${don}${direct}${compte}</nav>
     </div>`;
 }
 
@@ -130,8 +142,54 @@ function pied() {
   return `
     <div class="conteneur pied-inner">
       <div class="reseaux">${reseaux}</div>
-      <p>© ${new Date().getFullYear()} ${echapper(SITE.nom)}${SITE.api ? ` · <a class="lien-admin" href="admin.html">Espace admin</a>` : ""}</p>
+      <p>© ${new Date().getFullYear()} ${echapper(SITE.nom)}</p>
     </div>`;
+}
+
+let PAGE = "";
+let MOI; // undefined tant que la vérification n'est pas finie
+let ETAT_LIVE = null;
+
+function afficherEntete(moi = MOI) {
+  MOI = moi;
+  $("#entete").innerHTML = entete(PAGE, moi);
+  if (ETAT_LIVE) afficherLive(ETAT_LIVE);
+}
+
+// Après une connexion / déconnexion, on remet tout à jour
+function deconnexionSite() {
+  deconnexion();
+  location.reload();
+}
+
+/* ---------- Réglages du site modifiés depuis l'Administration ---------- */
+
+const CLE_PARAMETRES = "julvig_parametres";
+const CHAMPS_PARAMETRES = ["slogan", "aPropos", "chaineTwitch", "chaineKick", "don", "discord", "reseaux"];
+
+function appliquerParametres(p) {
+  if (!p) return;
+  for (const champ of CHAMPS_PARAMETRES) if (p[champ] !== undefined) SITE[champ] = p[champ];
+}
+
+async function chargerParametres() {
+  if (!SITE.api) return;
+  let p = null;
+  try {
+    p = JSON.parse(stockage("lire", CLE_PARAMETRES) || "null"); // dernière version connue
+  } catch {
+    p = null;
+  }
+  try {
+    const rep = await fetch(urlApi("/parametres"), { cache: "no-store", signal: AbortSignal.timeout(2500) });
+    if (rep.ok) {
+      p = await rep.json();
+      stockage("ecrire", CLE_PARAMETRES, JSON.stringify(p));
+    }
+  } catch {
+    // serveur lent ou injoignable : on garde la dernière version connue
+  }
+  appliquerParametres(p);
 }
 
 /* ---------- Pages ---------- */
@@ -457,10 +515,7 @@ async function afficherReactions(redif, avertissement = ERREUR_CONNEXION) {
     return;
   }
 
-  $("#deco").onclick = () => {
-    deconnexion();
-    afficherReactions(redif, "");
-  };
+  $("#deco").onclick = deconnexionSite;
 
   const form = $("#form-com");
   form.texte.addEventListener("input", () => {
@@ -576,6 +631,7 @@ const PLATEFORMES = {
 
 // plateforme = "twitch", "kick" ou null (pas en live)
 function afficherLive(plateforme) {
+  ETAT_LIVE = plateforme;
   const p = PLATEFORMES[plateforme];
   document.querySelectorAll(".btn-direct").forEach((b) => {
     b.classList.toggle("hors-ligne", !p);
@@ -609,15 +665,23 @@ document.addEventListener("DOMContentLoaded", async () => {
   ERREUR_CONNEXION = retour.erreur;
 
   const page = document.body.dataset.page;
-  $("#entete").innerHTML = entete(page);
+  PAGE = page;
+  await chargerParametres();
+  afficherEntete(moiEnCache() || (connecte() ? undefined : null));
   $("#pied").innerHTML = pied();
   if (!document.title.includes(SITE.nom)) document.title = `${document.title} — ${SITE.nom}`;
 
-  const burger = $(".burger");
-  burger.addEventListener("click", () => {
-    const ouvert = document.body.classList.toggle("menu-ouvert");
-    burger.setAttribute("aria-expanded", ouvert);
+  // Boutons de l'en-tête (il est redessiné après la vérification du compte)
+  $("#entete").addEventListener("click", (e) => {
+    const burger = e.target.closest(".burger");
+    if (burger) {
+      const ouvert = document.body.classList.toggle("menu-ouvert");
+      burger.setAttribute("aria-expanded", ouvert);
+    }
+    if (e.target.closest("[data-connexion]")) seConnecter();
+    if (e.target.closest("[data-deconnexion]")) deconnexionSite();
   });
+  quiSuisJe().then((moi) => afficherEntete(moi));
 
   verifierLive();
   setInterval(verifierLive, 2 * 60 * 1000); // re-vérifie toutes les 2 minutes
