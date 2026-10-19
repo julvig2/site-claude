@@ -65,8 +65,8 @@ Ces deux informations ne sont **pas secrètes** : tu peux les envoyer à Claude 
 ## Utilisation
 
 1. Mets ta rediff sur YouTube en **« Non répertoriée »**. Elle ne s'affiche pas sur ta chaîne, mais elle est lisible sur ton site.
-2. Va sur https://julvig2.github.io/site-claude/admin.html. Un lien « Espace admin » se trouve aussi en bas de chaque page.
-3. **Se connecter avec Twitch**, puis colle le lien YouTube. Le titre se remplit tout seul. Complète le reste et clique sur **Publier**.
+2. Sur le site, clique sur **Connexion** en haut à droite et connecte-toi avec Twitch, puis ouvre l'onglet **⚙ Administration** du menu.
+3. Dans l'onglet **Rediffs**, colle le lien YouTube. Le titre se remplit tout seul. Complète le reste et clique sur **Publier**.
 4. La rediff apparaît tout de suite sur le site. Tu peux la **modifier** ou la **supprimer** depuis la liste en dessous.
 
 Seul le compte Twitch indiqué dans `ADMIN_LOGIN` (le propriétaire) et ses modérateurs ont accès à l'Administration.
