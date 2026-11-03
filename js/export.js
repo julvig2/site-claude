@@ -207,14 +207,33 @@ ${serveur}
     racine.file("apercu.png", await canvasVersBlob(c));
 
     const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+    await sauvegarder(blob, `${id}.zip`);
+    return `${id}.zip`;
+  }
+
+  /** Lance le téléchargement (fenêtre de confirmation si le site est ouvert dans Claude). */
+  async function sauvegarder(blob, nomFichier) {
+    const claude = window.claude;
+    if (claude && typeof claude.use === "function") {
+      const downloads = await claude.use("downloads");
+      if (downloads) {
+        try {
+          await downloads.save({ filename: nomFichier, data: blob });
+          return;
+        } catch (err) {
+          if (err && err.code === "declined") throw new Error("téléchargement annulé");
+          if (err && err.code === "rate_limited") throw new Error("une fenêtre de téléchargement est déjà ouverte, réessaie dans un instant");
+          throw new Error("le téléchargement n'est pas disponible ici");
+        }
+      }
+    }
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `${id}.zip`;
+    a.download = nomFichier;
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    return `${id}.zip`;
   }
 
   return { telecharger, presetReShade, slug };
