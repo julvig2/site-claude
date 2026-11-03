@@ -162,6 +162,20 @@ function deconnexionSite() {
   location.reload();
 }
 
+// La connexion Twitch a échoué : on le dit au lieu de revenir en silence sur « Connexion »
+function afficherErreurConnexion(err) {
+  const texte =
+    err.statut === 401
+      ? "Ta connexion Twitch n'a pas été acceptée par le serveur du site. Réessaie ; si ça recommence, le serveur du site est peut-être mal configuré."
+      : `Connexion impossible : le serveur du site ne répond pas${err.statut ? ` (erreur ${err.statut})` : ""}. Réessaie dans quelques minutes.`;
+  const bandeau = document.createElement("div");
+  bandeau.className = "bandeau-erreur";
+  bandeau.setAttribute("role", "alert");
+  bandeau.innerHTML = `<div class="conteneur">${echapper(texte)} <button type="button" class="lien-bouton" aria-label="Fermer">✕</button></div>`;
+  bandeau.querySelector("button").onclick = () => bandeau.remove();
+  $("#entete").after(bandeau);
+}
+
 /* ---------- Réglages du site modifiés depuis l'Administration ---------- */
 
 const CLE_PARAMETRES = "julvig_parametres";
@@ -681,7 +695,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (e.target.closest("[data-connexion]")) seConnecter();
     if (e.target.closest("[data-deconnexion]")) deconnexionSite();
   });
-  quiSuisJe().then((moi) => afficherEntete(moi));
+  const avaitUnJeton = connecte();
+  quiSuisJe().then((moi) => {
+    afficherEntete(moi);
+    if (!moi && avaitUnJeton && ERREUR_COMPTE && page !== "admin") afficherErreurConnexion(ERREUR_COMPTE);
+  });
 
   verifierLive();
   setInterval(verifierLive, 2 * 60 * 1000); // re-vérifie toutes les 2 minutes

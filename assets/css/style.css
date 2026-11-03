@@ -90,6 +90,10 @@ h1, h2, h3 { line-height: 1.2; margin: 0 0 .4em; }
   .compte { margin: 12px 0 0; justify-content: center; }
 }
 
+.bandeau-erreur { background: rgba(229, 57, 53, .15); color: #ff8a80; border-bottom: 1px solid rgba(229, 57, 53, .4); }
+.bandeau-erreur .conteneur { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; }
+.bandeau-erreur .lien-bouton { color: #ff8a80; text-decoration: none; font-size: 1.1rem; }
+
 /* ---------- Boutons ---------- */
 .btn {
   display: inline-block; padding: 10px 18px; border-radius: 10px; font-weight: 600; text-decoration: none;

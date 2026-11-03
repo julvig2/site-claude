@@ -100,10 +100,13 @@ async function quiSuisJe({ forcer = false } = {}) {
     stockage("ecrire", CLE_MOI, JSON.stringify({ jeton: jeton.slice(-8), t: Date.now(), moi }));
     return moi;
   } catch (e) {
-    if (e.statut === 401) deconnexion(); // jeton expiré
+    ERREUR_COMPTE = e; // affichée par le site, pour ne pas échouer en silence
+    if (e.statut === 401) deconnexion(); // jeton expiré ou refusé
     return null;
   }
 }
+
+let ERREUR_COMPTE = null;
 
 /*
  * Au retour de Twitch, le jeton arrive dans l'URL (#access_token=...).
