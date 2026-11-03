@@ -26,7 +26,7 @@ const Exporteur = (() => {
 
   /** Preset ReShade (format ReShade 5/6). */
   function presetReShade(reglages) {
-    const s = Moteur.complet(reglages);
+    const s = Moteur.effectif(reglages);
     const P = Moteur.parametres(s);
     const tech = [];
     const sections = [];
@@ -86,7 +86,7 @@ const Exporteur = (() => {
     const m = s.monde, n = REGLAGES_NEUTRES.monde;
     return m.heure !== n.heure || m.meteo !== n.meteo || m.nuages !== n.nuages || m.lumieres !== n.lumieres;
   }
-  const avecRessource = (s) => mondeModifie(s) || s.timecycle.actif;
+  const avecRessource = (s) => mondeModifie(s) || s.timecycle.actif || s.optimisation === "fps";
 
   function fxmanifest(meta) {
     return `fx_version 'cerulean'
@@ -104,7 +104,7 @@ client_script 'client.lua'
     const m = s.monde, tc = s.timecycle;
     const heure = HEURES.find((x) => x.id === m.heure) || HEURES[0];
     const lua = (v) => (v === null || v === undefined ? "nil" : typeof v === "string" ? `"${v}"` : String(v));
-    const nuages = m.nuages === REGLAGES_NEUTRES.monde.nuages ? null : Number(m.nuages).toFixed(2);
+    const nuages = m.nuages === REGLAGES_NEUTRES.monde.nuages ? null : Math.round(Number(m.nuages) * 100) / 100;
     return `-- Pack graphique appliqué à tous les joueurs du serveur.
 -- Commande en jeu : /pack  → active / désactive le pack pour soi.
 -- Si vous utilisez un script qui synchronise la météo ou l'heure
@@ -119,6 +119,7 @@ local CONFIG = {
     lumieresVille = ${m.lumieres ? "true" : "false"},   -- false = lampadaires, fenêtres et néons éteints
     filtre = ${lua(tc.actif ? tc.modifier : null)},  -- filtre timecycle (nil = aucun)
     forceFiltre = ${Number(tc.force).toFixed(2)},
+    allegerOmbres = ${s.optimisation === "fps" ? "true" : "false"},   -- true = ombres et lumières lointaines allégées (gain de FPS)
 }
 
 local actif = true
@@ -133,6 +134,21 @@ local function appliquerFiltre()
         SetTimecycleModifier(CONFIG.filtre)
         SetTimecycleModifierStrength(CONFIG.forceFiltre)
     end
+end
+
+-- Optimisation : chaque appel est protégé (pcall), une fonction absente
+-- de la version du jeu est simplement ignorée.
+local function alleger()
+    pcall(RopeDrawShadowEnabled, false)
+    pcall(CascadeShadowsClearShadowSampleType)
+    pcall(CascadeShadowsSetAircraftMode, false)
+    pcall(CascadeShadowsEnableEntityTracker, true)
+    pcall(CascadeShadowsSetDynamicDepthMode, false)
+    pcall(CascadeShadowsSetEntityTrackerScale, 0.0)
+    pcall(CascadeShadowsSetDynamicDepthValue, 0.0)
+    pcall(CascadeShadowsSetCascadeBoundsScale, 0.0)
+    pcall(SetFlashLightFadeDistance, 10.0)
+    pcall(SetLightsCutoffDistanceTweak, 10.0)
 end
 
 local function appliquerMonde()
@@ -150,6 +166,9 @@ local function appliquerMonde()
     if not CONFIG.lumieresVille then
         SetArtificialLightsState(true)
     end
+    if CONFIG.allegerOmbres then
+        alleger()
+    end
 end
 
 local function retablir()
@@ -160,6 +179,10 @@ local function retablir()
     if CONFIG.nuages then opaciteNuages(1.0) end
     if not CONFIG.lumieresVille then SetArtificialLightsState(false) end
     if CONFIG.filtre then ClearTimecycleModifier() end
+    if CONFIG.allegerOmbres then
+        pcall(RopeDrawShadowEnabled, true)
+        pcall(CascadeShadowsInitSession)
+    end
 end
 
 CreateThread(function()
@@ -196,6 +219,7 @@ end)
     if (m.meteo !== "auto") details.push(`Météo : ${(METEOS.find((x) => x.id === m.meteo) || {}).nom}`);
     if (m.nuages !== REGLAGES_NEUTRES.monde.nuages) details.push(`Nuages : ${Math.round(m.nuages * 100)} %`);
     if (!m.lumieres) details.push("Lumières de la ville : éteintes");
+    if (s.optimisation === "fps") details.push("Optimisation : ombres et lumières lointaines allégées");
     if (s.timecycle.actif) details.push(`Filtre : ${s.timecycle.modifier} (force ${Number(s.timecycle.force).toFixed(2)})`);
     const serveur = avecRessource(s)
       ? `
@@ -255,7 +279,7 @@ ${serveur}
   /** Génère et télécharge le pack. */
   async function telecharger(reglages, meta) {
     if (typeof JSZip === "undefined") throw new Error("JSZip n'a pas pu être chargé (connexion internet ?)");
-    const s = Moteur.complet(reglages);
+    const s = Moteur.effectif(reglages);
     const nom = meta.nom || "Mon pack";
     const auteur = meta.auteur || "Anonyme";
     const id = slug(nom);
@@ -322,5 +346,5 @@ ${serveur}
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
 
-  return { telecharger, presetReShade, clientLua, avecRessource, slug };
+  return { telecharger, sauvegarder, presetReShade, clientLua, avecRessource, slug };
 })();

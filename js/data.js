@@ -44,6 +44,8 @@ const REGLAGES_NEUTRES = {
   grain: 0,               // FilmGrain.fx → Intensity (0 … 1)
   vignette: 0,            // Vignette.fx → Amount (0 … 1)
   vignetteRadius: 1.6,    // Vignette.fx → Radius
+  optimisation: "qualite", // "qualite" | "equilibre" | "fps" (effets retirés + ombres allégées)
+  ambiance: "naturelle",  // ambiance CVC choisie ("perso" = couleurs choisies à la main)
   // Monde : appliqué en jeu par la ressource serveur (pas par ReShade)
   monde: {
     heure: "auto",        // "auto" = ne pas changer | "midi" | "coucher" | "nuit"
@@ -67,7 +69,53 @@ const METEOS = [
   { id: "CLEAR", nom: "Ciel clair" },
   { id: "CLOUDS", nom: "Nuageux" },
   { id: "OVERCAST", nom: "Couvert" },
+  { id: "SMOG", nom: "Brume légère" },
   { id: "FOGGY", nom: "Brouillard" },
+];
+
+/* Pack CVC : choix du temps (All time = le jeu garde son cycle jour / nuit). */
+const TEMPS_CVC = [
+  { id: "auto", nom: "All time", detail: "jour / nuit" },
+  { id: "midi", nom: "One time", detail: "jour" },
+  { id: "nuit", nom: "One time", detail: "nuit" },
+];
+
+/* Pack CVC : brouillard → météo forcée par la ressource serveur. */
+const BROUILLARDS = [
+  { id: "EXTRASUNNY", nom: "Aucun" },
+  { id: "SMOG", nom: "Léger" },
+  { id: "FOGGY", nom: "Épais" },
+  { id: "auto", nom: "Ne pas changer" },
+];
+
+/* Pack CVC : optimisation. */
+const OPTIMISATIONS = [
+  { id: "qualite", nom: "Qualité", detail: "tous les effets" },
+  { id: "equilibre", nom: "Équilibrée", detail: "sans grain ni vignette" },
+  { id: "fps", nom: "Max FPS", detail: "effets légers + ombres allégées" },
+];
+
+/* Pack CVC : ambiances toutes prêtes (couleur du ciel = tons clairs, lumière = tons moyens). */
+const AMBIANCES_CVC = [
+  { id: "naturelle", nom: "Naturelle", apercu: ["#8cc4ee", "#f4e7c3"], reglages: { highlightColor: "#808080", highlightStrength: 0, midColor: "#808080", midStrength: 0, shadowColor: "#808080", shadowStrength: 0, temperature: 0 } },
+  { id: "glace", nom: "Bleu glacé", apercu: ["#9fd6ff", "#1f4d8a"], reglages: { highlightColor: "#9fd6ff", highlightStrength: 0.5, midColor: "#bfe3ff", midStrength: 0.25, shadowColor: "#1f4d8a", shadowStrength: 0.35, temperature: -0.3 } },
+  { id: "rose", nom: "Rose", apercu: ["#ff9fd0", "#5a2d7a"], reglages: { highlightColor: "#ff9fd0", highlightStrength: 0.5, midColor: "#ffc2e0", midStrength: 0.2, shadowColor: "#5a2d7a", shadowStrength: 0.3, temperature: 0.05 } },
+  { id: "violet", nom: "Violet", apercu: ["#b99cff", "#2a1f6b"], reglages: { highlightColor: "#b99cff", highlightStrength: 0.45, midColor: "#9c8cff", midStrength: 0.2, shadowColor: "#2a1f6b", shadowStrength: 0.5, temperature: -0.1 } },
+  { id: "dore", nom: "Doré", apercu: ["#ffcf7a", "#5a3a2a"], reglages: { highlightColor: "#ffcf7a", highlightStrength: 0.5, midColor: "#ffe2a8", midStrength: 0.15, shadowColor: "#5a3a2a", shadowStrength: 0.25, temperature: 0.35 } },
+  { id: "menthe", nom: "Menthe", apercu: ["#a8ffd8", "#0d4d4d"], reglages: { highlightColor: "#a8ffd8", highlightStrength: 0.4, midColor: "#c8ffe8", midStrength: 0.15, shadowColor: "#0d4d4d", shadowStrength: 0.35, temperature: -0.1 } },
+  { id: "rouge", nom: "Rouge", apercu: ["#ff8a7a", "#4a0d14"], reglages: { highlightColor: "#ff8a7a", highlightStrength: 0.45, midColor: "#ffb3a8", midStrength: 0.15, shadowColor: "#4a0d14", shadowStrength: 0.4, temperature: 0.15 } },
+];
+
+/* Pack son : armes GTA courantes (ou le nom d'une arme ajoutée par le serveur). */
+const ARMES = [
+  { id: "WEAPON_PISTOL", nom: "Pistolet" },
+  { id: "WEAPON_COMBATPISTOL", nom: "Pistolet de combat" },
+  { id: "WEAPON_APPISTOL", nom: "Pistolet automatique" },
+  { id: "WEAPON_PISTOL_MK2", nom: "Pistolet Mk II" },
+  { id: "WEAPON_SNSPISTOL", nom: "Pistolet SNS" },
+  { id: "WEAPON_HEAVYPISTOL", nom: "Pistolet lourd" },
+  { id: "WEAPON_PISTOL50", nom: "Pistolet .50" },
+  { id: "autre", nom: "Autre arme (nom à saisir)" },
 ];
 
 /* Point de départ du mode CVC : toujours jour, sans nuages, image claire et nette. */
@@ -76,6 +124,8 @@ const CVC_DEFAUT = {
   contrast: 0.15,
   vibrance: 0.35,
   sharpen: 0.6,
+  optimisation: "equilibre",
+  ambiance: "naturelle",
   monde: { heure: "midi", meteo: "EXTRASUNNY", nuages: 0, lumieres: true },
 };
 

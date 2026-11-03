@@ -89,7 +89,7 @@ const Scene = (() => {
   }
 
   // Quantité de nuages selon la météo (multipliée par l'opacité choisie)
-  const NUAGES_METEO = { auto: 0.35, EXTRASUNNY: 0.15, CLEAR: 0.3, CLOUDS: 0.8, OVERCAST: 1, FOGGY: 0.5 };
+  const NUAGES_METEO = { auto: 0.35, EXTRASUNNY: 0.15, CLEAR: 0.3, CLOUDS: 0.8, OVERCAST: 1, SMOG: 0.4, FOGGY: 0.5 };
   const COULEUR_NUAGES = { jour: "255,255,255", coucher: "255,178,150", nuit: "70,80,130" };
 
   function nuages(ctx, w, h, hz, mode, quantite) {
@@ -195,8 +195,9 @@ const Scene = (() => {
     ctx.fillStyle = degrade(ctx, hz - h * 0.12, hz + h * 0.02, ["rgba(0,0,0,0)", A.brume]);
     ctx.fillRect(0, hz - h * 0.12, w, h * 0.14);
 
-    if (o.meteo === "FOGGY") {
-      ctx.fillStyle = degrade(ctx, hz * 0.35, hz + h * 0.08, ["rgba(0,0,0,0)", A.brume.replace(/[\d.]+\)$/, "0.95)")]);
+    const brouillard = o.meteo === "FOGGY" ? 1 : o.meteo === "SMOG" ? 0.5 : 0;
+    if (brouillard) {
+      ctx.fillStyle = degrade(ctx, hz * 0.35, hz + h * 0.08, ["rgba(0,0,0,0)", A.brume.replace(/[\d.]+\)$/, `${0.95 * brouillard})`)]);
       ctx.fillRect(0, hz * 0.35, w, hz * 0.65 + h * 0.08);
     }
 
@@ -308,8 +309,8 @@ const Scene = (() => {
     ctx.fillStyle = "#e9e7da";
     ctx.fillRect(vx + vw * 0.41, vy + vh * 0.6, vw * 0.18, vh * 0.12);
 
-    if (o.meteo === "FOGGY") {
-      ctx.fillStyle = degrade(ctx, hz - h * 0.1, h, [A.brume.replace(/[\d.]+\)$/, "0.7)"), "rgba(0,0,0,0)"]);
+    if (brouillard) {
+      ctx.fillStyle = degrade(ctx, hz - h * 0.1, h, [A.brume.replace(/[\d.]+\)$/, `${0.7 * brouillard})`), "rgba(0,0,0,0)"]);
       ctx.fillRect(0, hz - h * 0.1, w, h - hz + h * 0.1);
     }
   }
@@ -424,9 +425,25 @@ const Moteur = (() => {
     };
   }
 
+  /** Réglages réellement exportés : l'optimisation retire les effets les plus coûteux. */
+  function effectif(reglages) {
+    const s = complet(reglages);
+    if (s.optimisation === "equilibre" || s.optimisation === "fps") {
+      s.grain = 0;
+      s.vignette = 0;
+    }
+    if (s.optimisation === "fps") {
+      s.sharpen = 0;
+      s.contrast = 0;
+      s.blackPoint = 0;
+      s.whitePoint = 255;
+    }
+    return s;
+  }
+
   /** Convertit les réglages de l'interface en paramètres de shaders ReShade. */
   function parametres(reglages) {
-    const s = complet(reglages);
+    const s = effectif(reglages);
     const ombre = decalages(s.shadowColor), lum = decalages(s.highlightColor), moy = decalages(s.midColor);
     const temp = [0.14, 0.03, -0.14];
     const round = (v) => Math.round(v * 1e6) / 1e6;
@@ -572,5 +589,5 @@ const Moteur = (() => {
     return out;
   }
 
-  return { traiter, parametres, complet };
+  return { traiter, parametres, complet, effectif };
 })();

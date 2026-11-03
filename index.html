@@ -22,10 +22,10 @@
           </a>
           <nav class="barre__nav" aria-label="Navigation">
             <a href="#packs">Packs</a>
-            <a href="#createur">Créateur</a>
+            <a href="#createur" data-aller-onglet="graphique">Pack graphique</a>
+            <a href="#createur" data-aller-onglet="son">Pack son</a>
+            <a href="#communaute">Communauté</a>
             <a href="#installation">Installation</a>
-            <a href="#serveur">Serveur</a>
-            <a href="#faq">FAQ</a>
           </nav>
           <a class="pill pill--blanc barre__discord" data-discord target="_blank" rel="noopener">Discord</a>
           <a class="pill pill--vert barre__creer" href="#createur">Créer</a>
@@ -88,7 +88,13 @@
           </div>
         </div>
 
-        <div class="modes" id="modes" role="tablist" aria-label="Type de pack">
+        <div class="onglets onglets--crea" id="ongletsCrea" role="tablist" aria-label="Créer">
+          <button class="actif" data-onglet="graphique" role="tab" aria-selected="true">Pack graphique</button>
+          <button data-onglet="son" role="tab" aria-selected="false">Pack son</button>
+        </div>
+
+        <div id="panneauGraphique">
+        <div class="modes" id="modes" role="tablist" aria-label="Type de pack graphique">
           <button class="mode actif" data-mode="cvc" role="tab" aria-selected="true">
             <span class="mode__tag">Simple</span>
             <strong>Pack CVC</strong>
@@ -127,7 +133,8 @@
                 <label for="auteurPack">Auteur</label>
                 <input id="auteurPack" maxlength="40" placeholder="Ton pseudo" />
               </div>
-              <button class="btn btn--plein" id="btnTelecharger">Télécharger le pack (.zip)</button>
+              <label class="interrupteur export__publier"><input type="checkbox" id="publierPack" checked /><span></span><b>Publier dans les derniers packs</b></label>
+              <button class="btn btn--plein" id="btnTelecharger">Créer le pack</button>
               <details class="code">
                 <summary>Voir le preset ReShade généré</summary>
                 <pre id="presetTexte"></pre>
@@ -141,6 +148,94 @@
 
           <div class="createur__panneau" id="panneau"></div>
         </div>
+        </div>
+
+        <!-- PACK SON -->
+        <div class="son" id="panneauSon" hidden>
+          <div class="son__principal">
+            <div class="carte son__bloc">
+              <h3>1. Ton son</h3>
+              <label class="depot" id="depot">
+                <input type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac" id="importSon" hidden />
+                <strong>Dépose ton son ici</strong>
+                <span>MP3, WAV, OGG… ou clique pour choisir un fichier</span>
+              </label>
+              <p class="astuce">Ou prends-en un dans la bibliothèque (sons de tir générés par le site, libres d'utilisation) :</p>
+              <div class="biblio" id="biblio"></div>
+            </div>
+
+            <div class="carte son__bloc">
+              <div class="son__tete">
+                <h3>2. Sélectionne le passage</h3>
+                <span class="astuce" id="sonInfos"></span>
+              </div>
+              <canvas class="onde" id="onde" width="1200" height="220" aria-label="Onde du son : glisse la zone verte pour choisir le passage"></canvas>
+              <div class="son__controles">
+                <button class="btn btn--petit" id="btnEcouter" type="button">Écouter le passage</button>
+                <button class="btn btn--ghost btn--petit" id="btn086" type="button">0,86 s · haute qualité</button>
+                <span class="son__duree" id="sonSel"></span>
+              </div>
+              <p class="astuce">Glisse la zone verte pour la déplacer, tire ses bords pour changer la durée. Le passage est rejoué quand tu lâches.</p>
+            </div>
+          </div>
+
+          <div class="son__cote">
+            <fieldset class="carte groupe">
+              <legend>3. L'arme et le volume</legend>
+              <div class="reglage">
+                <label for="sonArme">Arme</label>
+                <select id="sonArme"></select>
+              </div>
+              <div class="reglage" id="ligneArmeAutre" hidden>
+                <label for="sonArmeAutre">Nom de l'arme dans ton serveur</label>
+                <input class="champ-texte" id="sonArmeAutre" maxlength="40" placeholder="WEAPON_GLOCK17" />
+              </div>
+              <div class="reglage">
+                <div class="reglage__tete"><label for="sonVolume">Volume</label><output id="sonVolumeOut"></output></div>
+                <input type="range" id="sonVolume" min="0.1" max="1" step="0.01" value="0.8" />
+              </div>
+              <div class="reglage">
+                <div class="reglage__tete"><label for="sonPortee">Entendu par les joueurs jusqu'à</label><output id="sonPorteeOut"></output></div>
+                <input type="range" id="sonPortee" min="10" max="150" step="1" value="60" />
+              </div>
+            </fieldset>
+
+            <div class="carte export export--son">
+              <div class="champ">
+                <label for="nomSon">Nom du pack son</label>
+                <input id="nomSon" maxlength="40" value="Mon son" data-auto="1" />
+              </div>
+              <div class="champ">
+                <label for="auteurSon">Auteur</label>
+                <input id="auteurSon" maxlength="40" placeholder="Ton pseudo" />
+              </div>
+              <label class="interrupteur export__publier"><input type="checkbox" id="publierSon" checked /><span></span><b>Publier dans les derniers packs</b></label>
+              <button class="btn btn--plein" id="btnCreerSon" type="button">4. Créer le pack son</button>
+              <p class="astuce">Le pack contient le son en WAV et une ressource FiveM qui le joue à chaque tir, pour toi et les joueurs proches.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- COMMUNAUTÉ -->
+    <section class="section" id="communaute">
+      <div class="wrap">
+        <div class="section__tete">
+          <div>
+            <p class="surtitre">Communauté</p>
+            <h2>Les packs des membres</h2>
+          </div>
+          <div class="onglets" id="ongletsCommu" role="tablist" aria-label="Packs des membres">
+            <button class="actif" data-onglet="derniers" role="tab" aria-selected="true">Derniers packs</button>
+            <button data-onglet="populaires" role="tab" aria-selected="false">Populaires</button>
+            <button data-onglet="mes" role="tab" aria-selected="false">Mes packs</button>
+          </div>
+        </div>
+        <p class="astuce commu__etat" id="commuEtat" hidden></p>
+        <div class="stats" id="commuStats" hidden></div>
+        <div class="grille" id="commuGrille"></div>
+        <p class="vide" id="commuVide" hidden></p>
       </div>
     </section>
 
@@ -157,7 +252,7 @@
         </ol>
         <div class="carte serveur-info" id="serveur">
           <h3>Tu as un serveur ?</h3>
-          <p>Active l'option « Ressource serveur » dans le créateur : le pack inclut une ressource FiveM qui applique un filtre à tous les joueurs. Glisse-la dans <code>resources</code>, ajoute <code>ensure nom_graphique</code> dans <code>server.cfg</code>, et les joueurs peuvent l'activer ou la couper avec <code>/pack</code>.</p>
+          <p>Quand un pack change l'heure, la météo, les nuages, les lumières ou les ombres, il contient une ressource FiveM qui l'applique à tous les joueurs. Glisse-la dans <code>resources</code>, ajoute <code>ensure nom_graphique</code> dans <code>server.cfg</code>, et les joueurs peuvent l'activer ou la couper avec <code>/pack</code>. Un pack son s'installe pareil (<code>ensure nom_son</code>, commande <code>/packson</code>).</p>
         </div>
       </div>
     </section>
@@ -221,6 +316,8 @@
   <script src="js/engine.js"></script>
   <script src="js/export.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/son.js"></script>
+  <script src="js/communaute.js"></script>
   <script src="js/hero.js"></script>
 </body>
 </html>

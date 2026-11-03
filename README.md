@@ -3,17 +3,20 @@
 Site statique (HTML/CSS/JS, sans build) avec :
 
 - **Une boutique de packs** : catalogue filtrable, aperçu avant/après sur 3 ambiances (jour, coucher, nuit), prix, téléchargement gratuit ou lien d'achat.
-- **Un créateur de pack à deux modes** :
-  - **CVC (simple)** : heure, météo, nuages, lumières de la ville, luminosité, couleurs, contraste, netteté. Il démarre sur « midi, grand soleil, sans nuages » pour bien voir en combat ;
-  - **Réaliste (complet)** : exposition, gamma, contraste, points noir et blanc, saturation, vibrance, température, délavé, teintes des ombres, des tons moyens et des lumières, netteté et sa limite, grain film, vignette et son ouverture, monde (heure, météo, nuages, lumières) et filtre timecycle.
+- **Pack graphique**, en deux modes :
+  - **CVC** : mode *All time* (le jeu garde son cycle jour / nuit), *One time jour* ou *One time nuit* ; une ambiance toute prête (Bleu glacé, Rose, Violet, Doré, Menthe, Rouge…) ou tes couleurs (ciel, lumière) et la quantité de nuages ; luminosité, brouillard (aucun, léger, épais) et optimisation (Qualité, Équilibrée, Max FPS) ;
+  - **Réaliste** : tous les réglages (exposition, gamma, contraste, points noir et blanc, saturation, vibrance, température, délavé, teintes des ombres / tons moyens / lumières, netteté, grain, vignette, monde, filtre timecycle, optimisation).
+- **Pack son** : dépose un son (MP3, WAV, OGG…) ou prends-en un dans la bibliothèque (sons de tir générés par le site), sélectionne le passage sur l'onde (0,86 s par défaut), écoute, choisis l'arme, puis crée le pack.
+- **Communauté** : *Derniers packs*, *Populaires* (classement par nombre de membres qui ont téléchargé) et *Mes packs* (tes packs et tes stats). Partagée entre les membres sur la version en ligne ; ailleurs, les packs restent dans le navigateur.
 
-  L'aperçu avant/après se met à jour en direct. On peut aussi importer sa propre capture d'écran.
 - **L'export d'un vrai pack `.zip`** :
   - `plugins/<pack>.ini` : preset **ReShade** pour les couleurs, la lumière et la netteté (effets *Standard effects* : Levels, Tonemap, LiftGammaGain, Vibrance, Curves, LumaSharpen, FilmGrain, Vignette ; seuls les effets réglés sont activés) ;
   - `serveur/<pack>_graphique/` : ressource **FiveM** (`fxmanifest.lua` + `client.lua`), ajoutée quand le pack touche au monde (heure, météo, nuages, lumières de la ville) ou au filtre timecycle. ReShade ne peut que retoucher l'image : ces réglages-là sont appliqués par le jeu, sur un serveur. Les joueurs l'activent ou la coupent avec `/pack` ;
   - `pack.json` : les réglages, réimportables dans le créateur ;
   - `apercu.png` : l'avant/après ;
   - `LISEZMOI.txt` : les instructions d'installation.
+
+Un **pack son** contient le passage en WAV (44,1 kHz, 16 bits, mono) et une ressource FiveM (`client.lua`, `server.lua`, page NUI) qui joue ce son à chaque tir avec l'arme choisie, pour le tireur et les joueurs proches (`/packson` pour le couper). Le son s'ajoute au bruit d'origine de l'arme : le remplacer complètement demande des fichiers audio au format du jeu (`.awc`), que le site ne fabrique pas.
 
 L'aperçu applique en JavaScript les mêmes formules que les shaders ReShade exportés.
 
@@ -54,6 +57,9 @@ css/style.css
 js/data.js           configuration + catalogue
 js/engine.js         scène procédurale + moteur d'aperçu (formules ReShade)
 js/export.js         génération du preset ReShade, de la ressource FiveM et du .zip
-js/app.js            interface (boutique, modale, créateur)
+js/app.js            interface (boutique, modale, créateur graphique)
+js/son.js            pack son (onde, sélection, bibliothèque, WAV, ressource FiveM)
+js/communaute.js     derniers packs, populaires, mes packs
+js/hero.js           accueil (carrousel courbé, animation d'entrée)
 js/vendor/jszip.min.js   JSZip 3.10.1 (MIT)
 ```

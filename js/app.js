@@ -165,19 +165,22 @@
   const NOTE_MONDE = "Appliqué en jeu par la ressource serveur incluse dans le pack.";
   const CONTROLES = {
     cvc: [
-      { groupe: "Ciel", note: NOTE_MONDE, items: [
-        { cle: "monde.heure", label: "Heure", type: "select", options: HEURES },
-        { cle: "monde.meteo", label: "Météo", type: "select", options: METEOS },
+      { groupe: "1. Choisis le mode", items: [
+        { cle: "monde.heure", type: "segments", options: TEMPS_CVC },
+      ]},
+      { groupe: "2. Ambiance ou tes couleurs", items: [
+        { cle: "ambiance", type: "ambiances" },
+        { cle: "highlightColor", label: "Couleur du ciel", type: "color", visibleSi: (r) => r.ambiance === "perso" },
+        R("highlightStrength", "Intensité du ciel", 0, 1, 0.01, { visibleSi: (r) => r.ambiance === "perso" }),
+        { cle: "midColor", label: "Couleur de la lumière", type: "color", visibleSi: (r) => r.ambiance === "perso" },
+        R("midStrength", "Intensité de la lumière", 0, 1, 0.01, { visibleSi: (r) => r.ambiance === "perso" }),
         R("monde.nuages", "Nuages", 0, 1, 0.01, { pourcent: true }),
       ]},
-      { groupe: "Lumière", items: [
+      { groupe: "3. Luminosité, brouillard, optimisation", items: [
         R("exposure", "Luminosité", -0.5, 0.8, 0.01),
+        { cle: "monde.meteo", label: "Brouillard", type: "segments", options: BROUILLARDS },
+        { cle: "optimisation", label: "Optimisation", type: "segments", options: OPTIMISATIONS },
         { cle: "monde.lumieres", label: "Lumières de la ville (lampadaires, fenêtres, néons)", type: "toggle" },
-      ]},
-      { groupe: "Visibilité", items: [
-        R("vibrance", "Couleurs", -0.5, 1, 0.01),
-        R("contrast", "Contraste", -0.3, 0.6, 0.01),
-        R("sharpen", "Netteté", 0, 1.5, 0.01),
       ]},
     ],
     realiste: [
@@ -208,6 +211,7 @@
         R("grain", "Grain film", 0, 1, 0.01),
         R("vignette", "Vignette", 0, 1, 0.01),
         R("vignetteRadius", "Ouverture de la vignette", 0.8, 2.5, 0.01),
+        { cle: "optimisation", label: "Optimisation", type: "segments", options: OPTIMISATIONS },
       ]},
       { groupe: "Monde", note: NOTE_MONDE, items: [
         { cle: "monde.heure", label: "Heure", type: "select", options: HEURES },
@@ -261,6 +265,70 @@
         const ligne = document.createElement("div");
         const id = `r-${mode}-${it.cle.replace(/\./g, "-")}`;
         let input, sortie = null;
+        if (it.type === "segments") {
+          ligne.className = "reglage";
+          if (it.label) {
+            const l = document.createElement("span");
+            l.className = "reglage__label";
+            l.textContent = it.label;
+            ligne.appendChild(l);
+          }
+          input = document.createElement("div");
+          input.className = "segments";
+          input.setAttribute("role", "radiogroup");
+          if (it.label) input.setAttribute("aria-label", it.label);
+          it.options.forEach((o) => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "segment";
+            btn.dataset.v = o.id;
+            btn.setAttribute("role", "radio");
+            const b1 = document.createElement("b");
+            b1.textContent = o.nom;
+            btn.appendChild(b1);
+            if (o.detail) {
+              const sm = document.createElement("small");
+              sm.textContent = o.detail;
+              btn.appendChild(sm);
+            }
+            btn.addEventListener("click", () => {
+              ecrire(reglages(), it.cle, o.id);
+              synchroniser();
+              rendre();
+            });
+            input.appendChild(btn);
+          });
+          ligne.appendChild(input);
+          champs.push({ it, input, sortie: null, ligne });
+          bloc.appendChild(ligne);
+          return;
+        }
+        if (it.type === "ambiances") {
+          ligne.className = "reglage";
+          input = document.createElement("div");
+          input.className = "ambiances";
+          [...AMBIANCES_CVC, { id: "perso", nom: "Mes couleurs", apercu: null }].forEach((a) => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "ambiance";
+            btn.dataset.v = a.id;
+            const pastille = document.createElement("span");
+            pastille.className = "ambiance__pastille" + (a.apercu ? "" : " ambiance__pastille--perso");
+            if (a.apercu) pastille.style.background = `linear-gradient(135deg, ${a.apercu[0]} 50%, ${a.apercu[1]} 50%)`;
+            btn.append(pastille, document.createTextNode(a.nom));
+            btn.addEventListener("click", () => {
+              if (a.reglages) Object.assign(reglages(), copie(a.reglages));
+              reglages().ambiance = a.id;
+              synchroniser();
+              rendre();
+            });
+            input.appendChild(btn);
+          });
+          ligne.appendChild(input);
+          champs.push({ it, input, sortie: null, ligne });
+          bloc.appendChild(ligne);
+          return;
+        }
         if (it.type === "toggle") {
           ligne.className = "reglage";
           ligne.innerHTML = `<label class="interrupteur"><input type="checkbox" id="${id}" /><span></span><b></b></label>`;
@@ -321,6 +389,7 @@
 
   function majDependances() {
     champs.forEach(({ it, input, ligne }) => {
+      if (it.visibleSi) ligne.hidden = !it.visibleSi(reglages());
       if (!it.dependDe) return;
       const ok = Boolean(lire(reglages(), it.dependDe));
       input.disabled = !ok;
@@ -331,7 +400,13 @@
   function synchroniser() {
     champs.forEach(({ it, input, sortie }) => {
       const v = lire(reglages(), it.cle);
-      if (it.type === "toggle") input.checked = Boolean(v);
+      if (it.type === "segments" || it.type === "ambiances") {
+        [...input.children].forEach((b) => {
+          const actif = b.dataset.v === String(v);
+          b.classList.toggle("actif", actif);
+          b.setAttribute(it.type === "segments" ? "aria-checked" : "aria-pressed", actif);
+        });
+      } else if (it.type === "toggle") input.checked = Boolean(v);
       else input.value = v;
       majSortie(it, input, sortie);
     });
@@ -392,6 +467,7 @@
   }
 
   function personnaliser(p) {
+    choisirOnglet("graphique");
     if (!imagePerso) choisirScene(p.scene, false);
     charger(p.reglages, `${p.nom} (perso)`, "realiste");
     $("#createur").scrollIntoView({ behavior: "smooth" });
@@ -458,9 +534,14 @@
     const parmi = (l) => l[Math.floor(Math.random() * l.length)];
     const teinte = () => "#" + [0, 0, 0].map(() => Math.floor(40 + Math.random() * 215).toString(16).padStart(2, "0")).join("");
     if (mode === "cvc") {
+      const amb = parmi(AMBIANCES_CVC);
       charger({
-        exposure: a(0, 0.4), vibrance: a(0.1, 0.7), contrast: a(0, 0.35), sharpen: a(0.3, 1.1),
-        monde: { heure: parmi(["midi", "midi", "coucher", "auto"]), meteo: parmi(["EXTRASUNNY", "CLEAR", "EXTRASUNNY"]), nuages: a(0, 0.5), lumieres: true },
+        ...CVC_DEFAUT,
+        ...amb.reglages,
+        ambiance: amb.id,
+        exposure: a(0, 0.4),
+        optimisation: reglages().optimisation,
+        monde: { heure: parmi(["midi", "midi", "nuit", "auto"]), meteo: parmi(["EXTRASUNNY", "EXTRASUNNY", "SMOG"]), nuages: a(0, 0.5), lumieres: true },
       });
     } else {
       charger({
@@ -479,13 +560,19 @@
     const texte = btn.textContent;
     btn.textContent = "Génération…";
     try {
-      const f = await Exporteur.telecharger(reglages(), {
+      const meta = {
         nom: $("#nomPack").value.trim() || noms[mode],
         auteur: $("#auteurPack").value.trim() || "Anonyme",
         scene,
         mode,
-      });
-      toast(`${f} téléchargé ✔`);
+      };
+      const f = await Exporteur.telecharger(reglages(), meta);
+      let msg = `${f} téléchargé ✔`;
+      if ($("#publierPack").checked && typeof Communaute !== "undefined") {
+        const ok = await Communaute.publier({ type: "graphique", mode, nom: meta.nom, auteur: meta.auteur, scene, reglages: copie(reglages()) });
+        if (ok) msg += " · publié dans les derniers packs";
+      }
+      toast(msg);
     } catch (err) {
       toast("Erreur : " + err.message);
     } finally {
@@ -497,8 +584,31 @@
   mode = "";
   changerMode("cvc");
 
-  // Utilisé par le carrousel de l'accueil (js/hero.js)
-  window.ForgeUI = { ouvrirModale, toast };
+  /* ---------- Onglets Pack graphique / Pack son ---------- */
+  function choisirOnglet(o) {
+    $$("#ongletsCrea button").forEach((b) => {
+      const actif = b.dataset.onglet === o;
+      b.classList.toggle("actif", actif);
+      b.setAttribute("aria-selected", actif);
+    });
+    $("#panneauGraphique").hidden = o !== "graphique";
+    $("#panneauSon").hidden = o !== "son";
+    $(".createur__actions-tete").hidden = o !== "graphique";
+  }
+  $$("#ongletsCrea button").forEach((b) => b.addEventListener("click", () => choisirOnglet(b.dataset.onglet)));
+  $$("[data-aller-onglet]").forEach((a) => a.addEventListener("click", () => choisirOnglet(a.dataset.allerOnglet)));
+
+  // Un pack de la communauté chargé dans le créateur
+  function chargerPack(p) {
+    choisirOnglet("graphique");
+    if (!imagePerso && p.scene) choisirScene(p.scene, false);
+    charger(p.reglages || {}, `${p.nom} (perso)`, p.mode === "cvc" ? "cvc" : "realiste");
+    $("#createur").scrollIntoView({ behavior: "smooth" });
+    toast(`« ${p.nom} » chargé dans le créateur`);
+  }
+
+  // Utilisé par l'accueil (js/hero.js) et la communauté (js/communaute.js)
+  window.ForgeUI = { ouvrirModale, toast, chargerPack };
 
   /* ---------- Captures GTA (js/data.js → CAPTURES) ---------- */
   Scene.charger(typeof CAPTURES === "undefined" ? {} : CAPTURES).then((chargees) => {
