@@ -31,6 +31,11 @@ const Exporteur = (() => {
     const tech = [];
     const sections = [];
 
+    if (P.Levels.BlackPoint !== 0 || P.Levels.WhitePoint !== 255) {
+      tech.push("Levels@Levels.fx");
+      sections.push(`[Levels.fx]\nBlackPoint=${P.Levels.BlackPoint}\nHighlightClipping=0\nWhitePoint=${P.Levels.WhitePoint}\n`);
+    }
+
     tech.push("Tonemap@Tonemap.fx");
     sections.push(
       `[Tonemap.fx]\nBleach=${f(P.Tonemap.Bleach)}\nDefog=${f(0)}\nExposure=${f(P.Tonemap.Exposure)}\n` +
@@ -38,7 +43,7 @@ const Exporteur = (() => {
     );
 
     const lgg = P.LiftGammaGain;
-    if ([...lgg.RGB_Lift, ...lgg.RGB_Gain].some((v) => Math.abs(v - 1) > 1e-6)) {
+    if ([...lgg.RGB_Lift, ...lgg.RGB_Gamma, ...lgg.RGB_Gain].some((v) => Math.abs(v - 1) > 1e-6)) {
       tech.push("LiftGammaGain@LiftGammaGain.fx");
       sections.push(`[LiftGammaGain.fx]\nRGB_Gain=${f3(lgg.RGB_Gain)}\nRGB_Gamma=${f3(lgg.RGB_Gamma)}\nRGB_Lift=${f3(lgg.RGB_Lift)}\n`);
     }
@@ -57,6 +62,11 @@ const Exporteur = (() => {
           `sharp_strength=${f(s.sharpen)}\nshow_sharpen=0\n`
       );
     }
+    if (s.grain > 0) {
+      const g = P.FilmGrain;
+      tech.push("FilmGrain@FilmGrain.fx");
+      sections.push(`[FilmGrain.fx]\nIntensity=${f(g.Intensity)}\nMean=${f(g.Mean)}\nSignalToNoiseRatio=${g.SignalToNoiseRatio}\nVariance=${f(g.Variance)}\n`);
+    }
     if (s.vignette > 0) {
       tech.push("Vignette@Vignette.fx");
       sections.push(
@@ -71,6 +81,13 @@ const Exporteur = (() => {
     );
   }
 
+  /** Vrai si le pack modifie le monde (ciel, météo, nuages, lumières). */
+  function mondeModifie(s) {
+    const m = s.monde, n = REGLAGES_NEUTRES.monde;
+    return m.heure !== n.heure || m.meteo !== n.meteo || m.nuages !== n.nuages || m.lumieres !== n.lumieres;
+  }
+  const avecRessource = (s) => mondeModifie(s) || s.timecycle.actif;
+
   function fxmanifest(meta) {
     return `fx_version 'cerulean'
 game 'gta5'
@@ -83,53 +100,119 @@ client_script 'client.lua'
 `;
   }
 
-  function clientLua(tc) {
-    return `-- Filtre graphique appliqué à tous les joueurs du serveur.
--- Commande en jeu : /pack  → active / désactive le filtre pour soi.
+  function clientLua(s) {
+    const m = s.monde, tc = s.timecycle;
+    const heure = HEURES.find((x) => x.id === m.heure) || HEURES[0];
+    const lua = (v) => (v === null || v === undefined ? "nil" : typeof v === "string" ? `"${v}"` : String(v));
+    const nuages = m.nuages === REGLAGES_NEUTRES.monde.nuages ? null : Number(m.nuages).toFixed(2);
+    return `-- Pack graphique appliqué à tous les joueurs du serveur.
+-- Commande en jeu : /pack  → active / désactive le pack pour soi.
+-- Si vous utilisez un script qui synchronise la météo ou l'heure
+-- (vSync, qb-weathersync…), il peut annuler ces réglages : désactivez-le
+-- ou laissez "nil" pour ne pas toucher à la météo / l'heure.
 
-local MODIFICATEUR = "${tc.modifier}"
-local FORCE = ${Number(tc.force).toFixed(2)}
+local CONFIG = {
+    heure = ${lua(heure.h)},            -- heure forcée (nil = ne pas changer)
+    minute = ${lua(heure.m)},
+    meteo = ${lua(m.meteo === "auto" ? null : m.meteo)},   -- météo forcée (nil = ne pas changer)
+    nuages = ${lua(nuages)},          -- opacité des nuages, 0.0 = aucun (nil = ne pas changer)
+    lumieresVille = ${m.lumieres ? "true" : "false"},   -- false = lampadaires, fenêtres et néons éteints
+    filtre = ${lua(tc.actif ? tc.modifier : null)},  -- filtre timecycle (nil = aucun)
+    forceFiltre = ${Number(tc.force).toFixed(2)},
+}
+
 local actif = true
 
-local function appliquer()
-    if actif then
-        SetTimecycleModifier(MODIFICATEUR)
-        SetTimecycleModifierStrength(FORCE)
-    else
-        ClearTimecycleModifier()
+-- SET_CLOUD_HAT_OPACITY (appel par hash, valable sur toutes les versions)
+local function opaciteNuages(valeur)
+    Citizen.InvokeNative(0xF36199225D6D8C86, valeur + 0.0)
+end
+
+local function appliquerFiltre()
+    if CONFIG.filtre then
+        SetTimecycleModifier(CONFIG.filtre)
+        SetTimecycleModifierStrength(CONFIG.forceFiltre)
     end
+end
+
+local function appliquerMonde()
+    if CONFIG.meteo then
+        SetWeatherTypePersist(CONFIG.meteo)
+        SetWeatherTypeNowPersist(CONFIG.meteo)
+        SetOverrideWeather(CONFIG.meteo)
+    end
+    if CONFIG.heure then
+        NetworkOverrideClockTime(CONFIG.heure, CONFIG.minute or 0, 0)
+    end
+    if CONFIG.nuages then
+        opaciteNuages(CONFIG.nuages)
+    end
+    if not CONFIG.lumieresVille then
+        SetArtificialLightsState(true)
+    end
+end
+
+local function retablir()
+    if CONFIG.meteo then
+        ClearOverrideWeather()
+        ClearWeatherTypePersist()
+    end
+    if CONFIG.nuages then opaciteNuages(1.0) end
+    if not CONFIG.lumieresVille then SetArtificialLightsState(false) end
+    if CONFIG.filtre then ClearTimecycleModifier() end
 end
 
 CreateThread(function()
     Wait(2000)
-    appliquer()
+    appliquerFiltre()
+    while true do
+        if actif then appliquerMonde() end
+        Wait(1000)
+    end
 end)
 
 RegisterCommand("pack", function()
     actif = not actif
-    appliquer()
+    if actif then
+        appliquerFiltre()
+        appliquerMonde()
+    else
+        retablir()
+    end
 end, false)
 
 AddEventHandler("onResourceStop", function(ressource)
     if ressource == GetCurrentResourceName() then
-        ClearTimecycleModifier()
+        retablir()
     end
 end)
 `;
   }
 
   function lisezmoi(meta, s, nomFichier) {
-    const serveur = s.timecycle.actif
+    const m = s.monde;
+    const details = [];
+    if (m.heure !== "auto") details.push(`Heure : ${(HEURES.find((x) => x.id === m.heure) || {}).nom}`);
+    if (m.meteo !== "auto") details.push(`Météo : ${(METEOS.find((x) => x.id === m.meteo) || {}).nom}`);
+    if (m.nuages !== REGLAGES_NEUTRES.monde.nuages) details.push(`Nuages : ${Math.round(m.nuages * 100)} %`);
+    if (!m.lumieres) details.push("Lumières de la ville : éteintes");
+    if (s.timecycle.actif) details.push(`Filtre : ${s.timecycle.modifier} (force ${Number(s.timecycle.force).toFixed(2)})`);
+    const serveur = avecRessource(s)
       ? `
 --------------------------------------------------------------
- 2. RESSOURCE SERVEUR (propriétaires de serveur, optionnel)
+ 2. RESSOURCE SERVEUR : ciel, météo, nuages, lumières
 --------------------------------------------------------------
+ Ces réglages ne passent pas par ReShade : ils sont appliqués par
+ le jeu grâce à une ressource FiveM, à installer sur un serveur.
  1) Copiez le dossier "serveur/${nomFichier}_graphique" dans le dossier
     "resources" de votre serveur FiveM.
  2) Ajoutez dans server.cfg :  ensure ${nomFichier}_graphique
  3) Redémarrez le serveur. Les joueurs peuvent taper /pack pour
-    activer / désactiver le filtre.
- Filtre : ${s.timecycle.modifier} (force ${Number(s.timecycle.force).toFixed(2)})
+    activer / désactiver le pack.
+ Si un script synchronise déjà la météo ou l'heure (vSync…),
+ désactivez-le, sinon il annulera ces réglages.
+
+ ${details.join("\n ")}
 `
       : "";
     return `==============================================================
@@ -139,7 +222,7 @@ end)
 ==============================================================
 
 --------------------------------------------------------------
- 1. PRESET RESHADE (joueur)
+ 1. PRESET RESHADE : couleurs, lumière, netteté (joueur)
 --------------------------------------------------------------
  1) Installez ReShade (https://reshade.me) :
     - Lancez l'installateur et sélectionnez le fichier
@@ -153,8 +236,9 @@ end)
  3) En jeu, appuyez sur la touche Début (Home) pour ouvrir ReShade,
     puis choisissez le preset "${nomFichier}" en haut du menu.
 
- Effets utilisés : Tonemap, LiftGammaGain, Vibrance, Curves,
- LumaSharpen, Vignette (tous inclus dans "Standard effects").
+ Effets utilisés (tous dans "Standard effects") : Levels, Tonemap,
+ LiftGammaGain, Vibrance, Curves, LumaSharpen, FilmGrain, Vignette.
+ Seuls les effets réglés sont activés dans le preset.
 ${serveur}
 --------------------------------------------------------------
  MODIFIER LE PACK
@@ -179,24 +263,26 @@ ${serveur}
     const racine = zip.folder(id);
 
     racine.file("LISEZMOI.txt", lisezmoi({ nom, auteur }, s, id));
-    racine.file("pack.json", JSON.stringify({ format: "forgepack", version: 1, nom, auteur, reglages: s }, null, 2));
+    racine.file("pack.json", JSON.stringify({ format: "forgepack", version: 2, mode: meta.mode || "realiste", nom, auteur, reglages: s }, null, 2));
     racine.folder("plugins").file(`${id}.ini`, presetReShade(s));
 
-    if (s.timecycle.actif) {
+    if (avecRessource(s)) {
       const res = racine.folder("serveur").folder(`${id}_graphique`);
       res.file("fxmanifest.lua", fxmanifest({ nom, auteur }));
-      res.file("client.lua", clientLua(s.timecycle));
+      res.file("client.lua", clientLua(s));
     }
 
-    // Aperçu PNG (avant / après côte à côte)
+    // Aperçu PNG : le jeu d'origine à gauche, le pack (monde + couleurs) à droite
     const W = 960, H = 540;
-    const base = Scene.image(meta.scene || "coucher", W, H);
+    const sceneChoisie = meta.scene || "coucher";
+    const avant = Scene.image(sceneChoisie, W, H);
+    const apres = Moteur.traiter(Scene.image(Scene.ambiance(s.monde, sceneChoisie), W, H, s.monde), s);
     const c = document.createElement("canvas");
     c.width = W * 2;
     c.height = H;
     const ctx = c.getContext("2d");
-    ctx.putImageData(base, 0, 0);
-    ctx.putImageData(Moteur.traiter(base, s), W, 0);
+    ctx.putImageData(avant, 0, 0);
+    ctx.putImageData(apres, W, 0);
     ctx.font = "bold 22px sans-serif";
     ctx.fillStyle = "rgba(0,0,0,0.6)";
     ctx.fillRect(16, 16, 96, 36);
@@ -236,5 +322,5 @@ ${serveur}
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
 
-  return { telecharger, presetReShade, slug };
+  return { telecharger, presetReShade, clientLua, avecRessource, slug };
 })();

@@ -3,10 +3,14 @@
 Site statique (HTML/CSS/JS, sans build) avec :
 
 - **Une boutique de packs** : catalogue filtrable, aperçu avant/après sur 3 ambiances (jour, coucher, nuit), prix, téléchargement gratuit ou lien d'achat.
-- **Un créateur de pack** : 13 réglages (exposition, gamma, contraste, saturation, vibrance, température, délavé, teintes ombres/lumières, netteté, vignette) avec aperçu en direct. On peut aussi importer sa propre capture d'écran.
+- **Un créateur de pack à deux modes** :
+  - **CVC (simple)** : heure, météo, nuages, lumières de la ville, luminosité, couleurs, contraste, netteté. Il démarre sur « midi, grand soleil, sans nuages » pour bien voir en combat ;
+  - **Réaliste (complet)** : exposition, gamma, contraste, points noir et blanc, saturation, vibrance, température, délavé, teintes des ombres, des tons moyens et des lumières, netteté et sa limite, grain film, vignette et son ouverture, monde (heure, météo, nuages, lumières) et filtre timecycle.
+
+  L'aperçu avant/après se met à jour en direct. On peut aussi importer sa propre capture d'écran.
 - **L'export d'un vrai pack `.zip`** :
-  - `plugins/<pack>.ini` : preset **ReShade** (effets *Standard effects* : Tonemap, LiftGammaGain, Vibrance, Curves, LumaSharpen, Vignette) ;
-  - `serveur/<pack>_graphique/` : ressource **FiveM** optionnelle (`fxmanifest.lua` + `client.lua`) qui applique un filtre timecycle à tous les joueurs, avec la commande `/pack` pour l'activer ou le couper ;
+  - `plugins/<pack>.ini` : preset **ReShade** pour les couleurs, la lumière et la netteté (effets *Standard effects* : Levels, Tonemap, LiftGammaGain, Vibrance, Curves, LumaSharpen, FilmGrain, Vignette ; seuls les effets réglés sont activés) ;
+  - `serveur/<pack>_graphique/` : ressource **FiveM** (`fxmanifest.lua` + `client.lua`), ajoutée quand le pack touche au monde (heure, météo, nuages, lumières de la ville) ou au filtre timecycle. ReShade ne peut que retoucher l'image : ces réglages-là sont appliqués par le jeu, sur un serveur. Les joueurs l'activent ou la coupent avec `/pack` ;
   - `pack.json` : les réglages, réimportables dans le créateur ;
   - `apercu.png` : l'avant/après ;
   - `LISEZMOI.txt` : les instructions d'installation.

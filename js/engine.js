@@ -82,8 +82,50 @@ const Scene = (() => {
     ctx.restore();
   }
 
-  function dessiner(ctx, w, h, mode) {
-    const A = AMBIANCES[mode] || AMBIANCES.coucher;
+  function melange(a, b, t) {
+    const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+    const c = [16, 8, 0].map((d) => Math.round(((pa >> d) & 255) * (1 - t) + ((pb >> d) & 255) * t));
+    return "#" + c.map((v) => v.toString(16).padStart(2, "0")).join("");
+  }
+
+  // Quantité de nuages selon la météo (multipliée par l'opacité choisie)
+  const NUAGES_METEO = { auto: 0.35, EXTRASUNNY: 0.15, CLEAR: 0.3, CLOUDS: 0.8, OVERCAST: 1, FOGGY: 0.5 };
+  const COULEUR_NUAGES = { jour: "255,255,255", coucher: "255,178,150", nuit: "70,80,130" };
+
+  function nuages(ctx, w, h, hz, mode, quantite) {
+    if (quantite <= 0.01) return;
+    const r = rng(77);
+    const c = COULEUR_NUAGES[mode] || COULEUR_NUAGES.jour;
+    const nb = Math.round(6 + quantite * 14);
+    for (let i = 0; i < nb; i++) {
+      const x = r() * w * 1.2 - w * 0.1, y = hz * (0.08 + r() * 0.62);
+      const taille = w * (0.05 + r() * 0.09) * (0.6 + y / hz);
+      const alpha = Math.min(0.9, 0.35 + quantite * 0.5) * (0.6 + r() * 0.4);
+      for (let k = 0; k < 6; k++) {
+        const ox = (r() - 0.5) * taille * 2.2, oy = (r() - 0.5) * taille * 0.35;
+        const rr = taille * (0.45 + r() * 0.5);
+        const g = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, rr);
+        g.addColorStop(0, `rgba(${c},${alpha})`);
+        g.addColorStop(0.55, `rgba(${c},${alpha * 0.55})`);
+        g.addColorStop(1, `rgba(${c},0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(x + ox, y + oy, rr, rr * 0.55, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  function dessiner(ctx, w, h, mode, opts) {
+    const o = { meteo: "auto", nuages: 1, lumieres: true, ...(opts || {}) };
+    const A = { ...(AMBIANCES[mode] || AMBIANCES.coucher) };
+    if (!o.lumieres) { A.lampes = false; A.neons = false; A.fenetres = 0; }
+    if (o.meteo === "OVERCAST" || o.meteo === "FOGGY") {
+      const gris = mode === "nuit" ? "#1a1d26" : mode === "coucher" ? "#8a7d86" : "#aab3ba";
+      A.ciel = A.ciel.map((col) => melange(col, gris, 0.65));
+      A.halo = "rgba(255,255,255,0.12)";
+      A.astre = melange(A.astre, gris, 0.7);
+    }
     const r = rng(1337);
     const hz = h * 0.58; // ligne d'horizon
     const cx = w * 0.5;
@@ -109,6 +151,8 @@ const Scene = (() => {
     ctx.beginPath();
     ctx.arc(ax, ay, ar, 0, Math.PI * 2);
     ctx.fill();
+
+    nuages(ctx, w, h, hz, mode, (NUAGES_METEO[o.meteo] ?? 0.35) * o.nuages);
 
     // Skyline lointaine
     const rr = rng(42);
@@ -150,6 +194,11 @@ const Scene = (() => {
     // Brume d'horizon
     ctx.fillStyle = degrade(ctx, hz - h * 0.12, hz + h * 0.02, ["rgba(0,0,0,0)", A.brume]);
     ctx.fillRect(0, hz - h * 0.12, w, h * 0.14);
+
+    if (o.meteo === "FOGGY") {
+      ctx.fillStyle = degrade(ctx, hz * 0.35, hz + h * 0.08, ["rgba(0,0,0,0)", A.brume.replace(/[\d.]+\)$/, "0.95)")]);
+      ctx.fillRect(0, hz * 0.35, w, hz * 0.65 + h * 0.08);
+    }
 
     // Sol
     ctx.fillStyle = A.sol;
@@ -258,6 +307,11 @@ const Scene = (() => {
     // plaque
     ctx.fillStyle = "#e9e7da";
     ctx.fillRect(vx + vw * 0.41, vy + vh * 0.6, vw * 0.18, vh * 0.12);
+
+    if (o.meteo === "FOGGY") {
+      ctx.fillStyle = degrade(ctx, hz - h * 0.1, h, [A.brume.replace(/[\d.]+\)$/, "0.7)"), "rgba(0,0,0,0)"]);
+      ctx.fillRect(0, hz - h * 0.1, w, h - hz + h * 0.1);
+    }
   }
 
   function roundRect(ctx, x, y, w, h, r) {
@@ -287,8 +341,9 @@ const Scene = (() => {
   }
 
   /** Renvoie l'ImageData de la scène (mise en cache par mode + taille). */
-  function image(mode, w, h) {
-    const cle = `${mode}:${w}x${h}`;
+  function image(mode, w, h, monde) {
+    const opts = monde ? { meteo: monde.meteo, nuages: monde.nuages, lumieres: monde.lumieres } : null;
+    const cle = `${mode}:${w}x${h}:${opts ? JSON.stringify(opts) : ""}`;
     if (!cache.has(cle)) {
       const c = document.createElement("canvas");
       c.width = w;
@@ -308,7 +363,7 @@ const Scene = (() => {
         }
       }
       if (!data) {
-        dessiner(ctx, w, h, mode);
+        dessiner(ctx, w, h, mode, opts);
         data = ctx.getImageData(0, 0, w, h);
       }
       cache.set(cle, data);
@@ -332,7 +387,20 @@ const Scene = (() => {
     });
   }
 
-  return { image, charger, modes: Object.keys(AMBIANCES) };
+  /** Ambiance d'aperçu : l'heure forcée par le pack, sinon celle choisie. */
+  function ambiance(monde, defaut) {
+    return monde && monde.heure && monde.heure !== "auto" ? (monde.heure === "midi" ? "jour" : monde.heure) : defaut;
+  }
+  /** Vrai si une vraie capture d'écran est utilisée pour cette ambiance. */
+  const estCapture = (mode) => Boolean(photos[mode]);
+
+  // limite la mémoire : on vide le cache s'il grossit trop (réglages du monde)
+  const imageAvecLimite = (...a) => {
+    if (cache.size > 40) cache.clear();
+    return image(...a);
+  };
+
+  return { image: imageAvecLimite, charger, ambiance, estCapture, modes: Object.keys(AMBIANCES) };
 })();
 
 const Moteur = (() => {
@@ -348,26 +416,33 @@ const Moteur = (() => {
 
   /** Complète des réglages partiels avec les valeurs neutres. */
   function complet(r) {
-    return { ...REGLAGES_NEUTRES, ...r, timecycle: { ...REGLAGES_NEUTRES.timecycle, ...(r && r.timecycle) } };
+    return {
+      ...REGLAGES_NEUTRES,
+      ...r,
+      monde: { ...REGLAGES_NEUTRES.monde, ...(r && r.monde) },
+      timecycle: { ...REGLAGES_NEUTRES.timecycle, ...(r && r.timecycle) },
+    };
   }
 
   /** Convertit les réglages de l'interface en paramètres de shaders ReShade. */
   function parametres(reglages) {
     const s = complet(reglages);
-    const ombre = decalages(s.shadowColor), lum = decalages(s.highlightColor);
+    const ombre = decalages(s.shadowColor), lum = decalages(s.highlightColor), moy = decalages(s.midColor);
     const temp = [0.14, 0.03, -0.14];
     const round = (v) => Math.round(v * 1e6) / 1e6;
     return {
+      Levels: { BlackPoint: Math.round(s.blackPoint), WhitePoint: Math.round(s.whitePoint) },
       Tonemap: { Exposure: s.exposure, Gamma: s.gamma, Saturation: s.saturation, Bleach: s.bleach, Defog: 0 },
       LiftGammaGain: {
         RGB_Lift: [0, 1, 2].map((i) => round(clamp(1 + s.shadowStrength * ombre[i] * 1.2, 0, 2))),
-        RGB_Gamma: [1, 1, 1],
+        RGB_Gamma: [0, 1, 2].map((i) => round(clamp(1 + s.midStrength * moy[i] * 0.9, 0.1, 2))),
         RGB_Gain: [0, 1, 2].map((i) => round(clamp(1 + s.highlightStrength * lum[i] * 0.8 + s.temperature * temp[i], 0, 2))),
       },
       Vibrance: { Vibrance: s.vibrance },
       Curves: { Contrast: s.contrast },
-      LumaSharpen: { sharp_strength: s.sharpen, sharp_clamp: 0.035 },
-      Vignette: { Amount: -s.vignette, Radius: 1.6, Slope: 2 },
+      LumaSharpen: { sharp_strength: s.sharpen, sharp_clamp: s.sharpenClamp },
+      FilmGrain: { Intensity: s.grain, Variance: 0.4, Mean: 0.5, SignalToNoiseRatio: 6 },
+      Vignette: { Amount: -s.vignette, Radius: s.vignetteRadius, Slope: 2 },
     };
   }
 
@@ -385,12 +460,18 @@ const Moteur = (() => {
 
     const expo = Math.pow(2, P.Tonemap.Exposure);
     const gamma = P.Tonemap.Gamma, sat = P.Tonemap.Saturation, bleach = P.Tonemap.Bleach;
-    const lift = P.LiftGammaGain.RGB_Lift, gain = P.LiftGammaGain.RGB_Gain;
+    const lift = P.LiftGammaGain.RGB_Lift, gain = P.LiftGammaGain.RGB_Gain, gam = P.LiftGammaGain.RGB_Gamma;
+    const gamNeutre = gam.every((g) => g === 1);
+    const noir = P.Levels.BlackPoint / 255;
+    const blanc = P.Levels.WhitePoint === P.Levels.BlackPoint ? 255 / 0.00025 : 255 / (P.Levels.WhitePoint - P.Levels.BlackPoint);
     const vib = P.Vibrance.Vibrance, contraste = P.Curves.Contrast;
     const c = [0, 0, 0];
     // Exposition + gamma ne dépendent que de la valeur 0-255 du canal : table précalculée.
     const table = new Float32Array(256);
-    for (let v = 0; v < 256; v++) table[v] = Math.pow((v / 255) * expo, gamma);
+    for (let v = 0; v < 256; v++) {
+      const niveau = clamp((v / 255) * blanc - noir * blanc, 0, 1); // Levels.fx
+      table[v] = Math.pow(niveau * expo, gamma);
+    }
 
     for (let i = 0; i < n; i++) {
       const o = i * 4;
@@ -420,7 +501,7 @@ const Moteur = (() => {
       for (let k = 0; k < 3; k++) {
         let v = c[k] * (1.5 - 0.5 * lift[k]) + 0.5 * lift[k] - 0.5;
         v = clamp(v, 0, 1) * gain[k];
-        c[k] = v;
+        c[k] = gamNeutre ? v : Math.pow(Math.max(v, 0), 1 / gam[k]);
       }
 
       // --- Vibrance.fx ---
@@ -449,6 +530,9 @@ const Moteur = (() => {
     const out = new ImageData(w, h);
     const od = out.data;
     const force = P.LumaSharpen.sharp_strength, pince = P.LumaSharpen.sharp_clamp;
+    const grain = P.FilmGrain.Intensity;
+    let graine = 12345;
+    const alea = () => ((graine = (Math.imul(graine, 1103515245) + 12345) >>> 0) / 4294967296);
     const amount = P.Vignette.Amount, rayon = P.Vignette.Radius, ratio = w / h;
     for (let y = 0; y < h; y++) {
       const y0 = y > 0 ? y - 1 : y, y1 = y < h - 1 ? y + 1 : y;
@@ -464,6 +548,13 @@ const Moteur = (() => {
               4 * luma[i]) / 16;
           const net = clamp((luma[i] - flou) * force, -pince, pince);
           r += net; g += net; bl += net;
+        }
+        if (grain > 0) {
+          // FilmGrain.fx : bruit gaussien, plus visible dans les tons sombres
+          const bruit = Math.sqrt(-2 * Math.log(alea() + 1e-7)) * Math.cos(6.2831853 * alea());
+          const inv = Math.max(0, 1 - (r + g + bl) / 3);
+          const n = bruit * 0.4 * Math.pow(inv, 3) * grain * 0.35;
+          r += n; g += n; bl += n;
         }
         if (amount !== 0) {
           const dx = ((x / w - 0.5) * ratio) / rayon;

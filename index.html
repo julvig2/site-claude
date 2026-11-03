@@ -88,6 +88,19 @@
           </div>
         </div>
 
+        <div class="modes" id="modes" role="tablist" aria-label="Type de pack">
+          <button class="mode actif" data-mode="cvc" role="tab" aria-selected="true">
+            <span class="mode__tag">Simple</span>
+            <strong>Pack CVC</strong>
+            <span class="mode__desc">Ciel, nuages, lumières, luminosité. L'essentiel pour bien voir en combat.</span>
+          </button>
+          <button class="mode" data-mode="realiste" role="tab" aria-selected="false">
+            <span class="mode__tag">Complet</span>
+            <strong>Pack réaliste</strong>
+            <span class="mode__desc">Tous les réglages : étalonnage, niveaux, grain, vignette, monde et filtre du jeu.</span>
+          </button>
+        </div>
+
         <div class="createur">
           <div class="createur__apercu">
             <div class="comparer" data-comparer id="creaComparer">
@@ -102,12 +115,13 @@
               <button data-scene="nuit">☾ Nuit</button>
               <label class="scenes__import">⬆ Ma capture<input type="file" accept="image/*" id="importImage" hidden /></label>
             </div>
+            <p class="astuce note-monde" id="noteMonde" hidden></p>
             <p class="astuce">Astuce : importe une capture d'écran de ton serveur pour voir le pack sur ta vraie map. Double-clic sur un réglage pour le remettre à zéro.</p>
 
             <div class="carte export">
               <div class="champ">
                 <label for="nomPack">Nom du pack</label>
-                <input id="nomPack" maxlength="40" value="Mon pack" />
+                <input id="nomPack" maxlength="40" value="Mon pack CVC" />
               </div>
               <div class="champ">
                 <label for="auteurPack">Auteur</label>
@@ -117,6 +131,10 @@
               <details class="code">
                 <summary>Voir le preset ReShade généré</summary>
                 <pre id="presetTexte"></pre>
+              </details>
+              <details class="code" id="codeLua" hidden>
+                <summary>Voir la ressource serveur générée (client.lua)</summary>
+                <pre id="luaTexte"></pre>
               </details>
             </div>
           </div>

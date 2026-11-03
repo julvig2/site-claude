@@ -35,9 +35,48 @@ const REGLAGES_NEUTRES = {
   shadowStrength: 0,
   highlightColor: "#808080", // LiftGammaGain.fx → RGB_Gain
   highlightStrength: 0,
+  midColor: "#808080",    // LiftGammaGain.fx → RGB_Gamma (tons moyens)
+  midStrength: 0,
+  blackPoint: 0,          // Levels.fx → BlackPoint (0 … 64)
+  whitePoint: 255,        // Levels.fx → WhitePoint (191 … 255)
   sharpen: 0,             // LumaSharpen.fx → sharp_strength (0 … 2)
+  sharpenClamp: 0.035,    // LumaSharpen.fx → sharp_clamp
+  grain: 0,               // FilmGrain.fx → Intensity (0 … 1)
   vignette: 0,            // Vignette.fx → Amount (0 … 1)
+  vignetteRadius: 1.6,    // Vignette.fx → Radius
+  // Monde : appliqué en jeu par la ressource serveur (pas par ReShade)
+  monde: {
+    heure: "auto",        // "auto" = ne pas changer | "midi" | "coucher" | "nuit"
+    meteo: "auto",        // "auto" = ne pas changer | type de météo GTA
+    nuages: 1,            // opacité des nuages (0 = aucun nuage)
+    lumieres: true,       // lumières de la ville (lampadaires, fenêtres, néons)
+  },
   timecycle: { actif: false, modifier: "rply_saturation", force: 0.5 },
+};
+
+/* Choix proposés pour le monde. */
+const HEURES = [
+  { id: "auto", nom: "Ne pas changer", h: null, m: null },
+  { id: "midi", nom: "Midi (toujours jour)", h: 12, m: 0 },
+  { id: "coucher", nom: "Coucher de soleil", h: 19, m: 30 },
+  { id: "nuit", nom: "Nuit", h: 23, m: 0 },
+];
+const METEOS = [
+  { id: "auto", nom: "Ne pas changer" },
+  { id: "EXTRASUNNY", nom: "Grand soleil" },
+  { id: "CLEAR", nom: "Ciel clair" },
+  { id: "CLOUDS", nom: "Nuageux" },
+  { id: "OVERCAST", nom: "Couvert" },
+  { id: "FOGGY", nom: "Brouillard" },
+];
+
+/* Point de départ du mode CVC : toujours jour, sans nuages, image claire et nette. */
+const CVC_DEFAUT = {
+  exposure: 0.15,
+  contrast: 0.15,
+  vibrance: 0.35,
+  sharpen: 0.6,
+  monde: { heure: "midi", meteo: "EXTRASUNNY", nuages: 0, lumieres: true },
 };
 
 /* Filtres "timecycle" natifs de GTA V utilisables dans la ressource serveur. */

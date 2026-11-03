@@ -160,143 +160,242 @@
     }
   });
 
-  /* ---------- Créateur ---------- */
-  const CONTROLES = [
-    { groupe: "Lumière", items: [
-      { cle: "exposure", label: "Exposition", min: -1, max: 1, pas: 0.01 },
-      { cle: "gamma", label: "Gamma (profondeur)", min: 0.6, max: 1.6, pas: 0.01 },
-      { cle: "contrast", label: "Contraste", min: -1, max: 1, pas: 0.01 },
-    ]},
-    { groupe: "Couleurs", items: [
-      { cle: "saturation", label: "Saturation", min: -1, max: 1, pas: 0.01 },
-      { cle: "vibrance", label: "Vibrance", min: -1, max: 1, pas: 0.01 },
-      { cle: "temperature", label: "Température", min: -1, max: 1, pas: 0.01, classe: "temp" },
-      { cle: "bleach", label: "Délavé (bleach)", min: 0, max: 1, pas: 0.01 },
-    ]},
-    { groupe: "Étalonnage", items: [
-      { cle: "shadowColor", label: "Teinte des ombres", type: "color" },
-      { cle: "shadowStrength", label: "Intensité ombres", min: 0, max: 1, pas: 0.01 },
-      { cle: "highlightColor", label: "Teinte des lumières", type: "color" },
-      { cle: "highlightStrength", label: "Intensité lumières", min: 0, max: 1, pas: 0.01 },
-    ]},
-    { groupe: "Détails", items: [
-      { cle: "sharpen", label: "Netteté", min: 0, max: 2, pas: 0.01 },
-      { cle: "vignette", label: "Vignette", min: 0, max: 1, pas: 0.01 },
-    ]},
-  ];
+  /* ---------- Créateur : deux modes (CVC simple / réaliste complet) ---------- */
+  const R = (cle, label, min, max, pas, extra = {}) => ({ cle, label, min, max, pas, ...extra });
+  const NOTE_MONDE = "Appliqué en jeu par la ressource serveur incluse dans le pack.";
+  const CONTROLES = {
+    cvc: [
+      { groupe: "Ciel", note: NOTE_MONDE, items: [
+        { cle: "monde.heure", label: "Heure", type: "select", options: HEURES },
+        { cle: "monde.meteo", label: "Météo", type: "select", options: METEOS },
+        R("monde.nuages", "Nuages", 0, 1, 0.01, { pourcent: true }),
+      ]},
+      { groupe: "Lumière", items: [
+        R("exposure", "Luminosité", -0.5, 0.8, 0.01),
+        { cle: "monde.lumieres", label: "Lumières de la ville (lampadaires, fenêtres, néons)", type: "toggle" },
+      ]},
+      { groupe: "Visibilité", items: [
+        R("vibrance", "Couleurs", -0.5, 1, 0.01),
+        R("contrast", "Contraste", -0.3, 0.6, 0.01),
+        R("sharpen", "Netteté", 0, 1.5, 0.01),
+      ]},
+    ],
+    realiste: [
+      { groupe: "Lumière", items: [
+        R("exposure", "Exposition", -1, 1, 0.01),
+        R("gamma", "Gamma (profondeur)", 0.6, 1.6, 0.01),
+        R("contrast", "Contraste", -1, 1, 0.01),
+        R("blackPoint", "Point noir", 0, 64, 1),
+        R("whitePoint", "Point blanc", 191, 255, 1),
+      ]},
+      { groupe: "Couleurs", items: [
+        R("saturation", "Saturation", -1, 1, 0.01),
+        R("vibrance", "Vibrance", -1, 1, 0.01),
+        R("temperature", "Température", -1, 1, 0.01, { classe: "temp" }),
+        R("bleach", "Délavé (bleach)", 0, 1, 0.01),
+      ]},
+      { groupe: "Étalonnage", items: [
+        { cle: "shadowColor", label: "Teinte des ombres", type: "color" },
+        R("shadowStrength", "Intensité ombres", 0, 1, 0.01),
+        { cle: "midColor", label: "Teinte des tons moyens", type: "color" },
+        R("midStrength", "Intensité tons moyens", 0, 1, 0.01),
+        { cle: "highlightColor", label: "Teinte des lumières", type: "color" },
+        R("highlightStrength", "Intensité lumières", 0, 1, 0.01),
+      ]},
+      { groupe: "Détails", items: [
+        R("sharpen", "Netteté", 0, 2, 0.01),
+        R("sharpenClamp", "Limite de netteté", 0.01, 0.15, 0.005),
+        R("grain", "Grain film", 0, 1, 0.01),
+        R("vignette", "Vignette", 0, 1, 0.01),
+        R("vignetteRadius", "Ouverture de la vignette", 0.8, 2.5, 0.01),
+      ]},
+      { groupe: "Monde", note: NOTE_MONDE, items: [
+        { cle: "monde.heure", label: "Heure", type: "select", options: HEURES },
+        { cle: "monde.meteo", label: "Météo", type: "select", options: METEOS },
+        R("monde.nuages", "Nuages", 0, 1, 0.01, { pourcent: true }),
+        { cle: "monde.lumieres", label: "Lumières de la ville (lampadaires, fenêtres, néons)", type: "toggle" },
+      ]},
+      { groupe: "Filtre du jeu", note: "Filtre timecycle de GTA, appliqué par la ressource serveur. Il n'apparaît pas dans l'aperçu.", items: [
+        { cle: "timecycle.actif", label: "Ajouter un filtre timecycle", type: "toggle" },
+        { cle: "timecycle.modifier", label: "Filtre", type: "select", options: TIMECYCLES, dependDe: "timecycle.actif" },
+        R("timecycle.force", "Force du filtre", 0, 1, 0.01, { pourcent: true, dependDe: "timecycle.actif" }),
+      ]},
+    ],
+  };
 
-  let reglages = Moteur.complet({});
+  const lire = (o, cle) => cle.split(".").reduce((a, k) => a[k], o);
+  const ecrire = (o, cle, v) => {
+    const ks = cle.split(".");
+    const dernier = ks.pop();
+    ks.reduce((a, k) => a[k], o)[dernier] = v;
+  };
+  const copie = (o) => JSON.parse(JSON.stringify(o));
+  const DEPART = { cvc: () => Moteur.complet(copie(CVC_DEFAUT)), realiste: () => Moteur.complet(copie(PACKS[0].reglages)) };
+
+  let mode = "cvc";
+  const etats = { cvc: DEPART.cvc(), realiste: DEPART.realiste() };
+  const noms = { cvc: "Mon pack CVC", realiste: "Mon pack réaliste" };
+  const reglages = () => etats[mode];
   let scene = "coucher";
   let imagePerso = null;
   const crea = initComparer($("#creaComparer"));
   const panneau = $("#panneau");
-  const champs = {};
+  let champs = [];
 
-  CONTROLES.forEach((g) => {
-    const bloc = document.createElement("fieldset");
-    bloc.className = "carte groupe";
-    bloc.innerHTML = `<legend>${g.groupe}</legend>`;
-    g.items.forEach((it) => {
-      const ligne = document.createElement("div");
-      ligne.className = "reglage" + (it.type === "color" ? " reglage--couleur" : "");
-      const id = "r-" + it.cle;
-      if (it.type === "color") {
-        ligne.innerHTML = `<label for="${id}">${it.label}</label><input type="color" id="${id}" />`;
-      } else {
-        ligne.innerHTML = `
-          <div class="reglage__tete"><label for="${id}">${it.label}</label><output></output></div>
-          <input type="range" id="${id}" min="${it.min}" max="${it.max}" step="${it.pas}" class="${it.classe || ""}" />`;
+  function construirePanneau() {
+    panneau.textContent = "";
+    champs = [];
+    CONTROLES[mode].forEach((g) => {
+      const bloc = document.createElement("fieldset");
+      bloc.className = "carte groupe";
+      const legende = document.createElement("legend");
+      legende.textContent = g.groupe;
+      bloc.appendChild(legende);
+      if (g.note) {
+        const n = document.createElement("p");
+        n.className = "astuce groupe__note";
+        n.textContent = g.note;
+        bloc.appendChild(n);
       }
-      const input = $("input", ligne);
-      const sortie = $("output", ligne);
-      input.addEventListener("input", () => {
-        reglages[it.cle] = it.type === "color" ? input.value : parseFloat(input.value);
-        majSortie(it, input, sortie);
-        rendre();
+      g.items.forEach((it) => {
+        const ligne = document.createElement("div");
+        const id = `r-${mode}-${it.cle.replace(/\./g, "-")}`;
+        let input, sortie = null;
+        if (it.type === "toggle") {
+          ligne.className = "reglage";
+          ligne.innerHTML = `<label class="interrupteur"><input type="checkbox" id="${id}" /><span></span><b></b></label>`;
+          ligne.querySelector("b").textContent = it.label;
+          input = $("input", ligne);
+        } else if (it.type === "select") {
+          ligne.className = "reglage";
+          ligne.innerHTML = `<label for="${id}"></label><select id="${id}"></select>`;
+          $("label", ligne).textContent = it.label;
+          input = $("select", ligne);
+          it.options.forEach((o) => input.add(new Option(o.nom, o.id)));
+        } else if (it.type === "color") {
+          ligne.className = "reglage reglage--couleur";
+          ligne.innerHTML = `<label for="${id}"></label><input type="color" id="${id}" />`;
+          $("label", ligne).textContent = it.label;
+          input = $("input", ligne);
+        } else {
+          ligne.className = "reglage";
+          ligne.innerHTML = `
+            <div class="reglage__tete"><label for="${id}"></label><output></output></div>
+            <input type="range" id="${id}" min="${it.min}" max="${it.max}" step="${it.pas}" class="${it.classe || ""}" />`;
+          $("label", ligne).textContent = it.label;
+          input = $("input", ligne);
+          sortie = $("output", ligne);
+        }
+        const valeur = () =>
+          it.type === "toggle" ? input.checked : it.type === "range" || !it.type ? parseFloat(input.value) : input.value;
+        input.addEventListener(it.type === "toggle" || it.type === "select" ? "change" : "input", () => {
+          ecrire(reglages(), it.cle, valeur());
+          majSortie(it, input, sortie);
+          majDependances();
+          rendre();
+        });
+        if (!it.type || it.type === "color") {
+          input.addEventListener("dblclick", () => {
+            ecrire(reglages(), it.cle, lire(REGLAGES_NEUTRES, it.cle));
+            synchroniser();
+            rendre();
+          });
+        }
+        champs.push({ it, input, sortie, ligne });
+        bloc.appendChild(ligne);
       });
-      input.addEventListener("dblclick", () => {
-        reglages[it.cle] = REGLAGES_NEUTRES[it.cle];
-        synchroniser();
-        rendre();
-      });
-      champs[it.cle] = { it, input, sortie };
-      bloc.appendChild(ligne);
+      panneau.appendChild(bloc);
     });
-    panneau.appendChild(bloc);
-  });
-
-  // Groupe serveur
-  const blocServeur = document.createElement("fieldset");
-  blocServeur.className = "carte groupe";
-  blocServeur.innerHTML = `
-    <legend>Ressource serveur</legend>
-    <label class="interrupteur"><input type="checkbox" id="tcActif" /><span></span>Inclure une ressource FiveM (filtre pour tous les joueurs)</label>
-    <div class="reglage" id="tcOptions">
-      <label for="tcModif">Filtre timecycle</label>
-      <select id="tcModif">${TIMECYCLES.map((t) => `<option value="${t.id}">${t.nom}</option>`).join("")}</select>
-      <div class="reglage__tete"><label for="tcForce">Force du filtre</label><output id="tcForceOut"></output></div>
-      <input type="range" id="tcForce" min="0" max="1" step="0.01" />
-      <p class="astuce">Le filtre timecycle est appliqué par le jeu lui-même : il n'apparaît pas dans l'aperçu.</p>
-    </div>`;
-  panneau.appendChild(blocServeur);
-  $("#tcActif").addEventListener("change", (e) => {
-    reglages.timecycle.actif = e.target.checked;
-    synchroniser();
-  });
-  $("#tcModif").addEventListener("change", (e) => (reglages.timecycle.modifier = e.target.value));
-  $("#tcForce").addEventListener("input", (e) => {
-    reglages.timecycle.force = parseFloat(e.target.value);
-    $("#tcForceOut").textContent = Math.round(reglages.timecycle.force * 100) + " %";
-  });
+  }
 
   function majSortie(it, input, sortie) {
     if (!sortie) return;
     const v = parseFloat(input.value);
-    sortie.textContent = (v > 0 && it.min < 0 ? "+" : "") + v.toFixed(2);
-    // remplissage visuel de la piste
-    const p = ((v - it.min) / (it.max - it.min)) * 100;
-    input.style.setProperty("--p", p + "%");
+    sortie.textContent = it.pourcent
+      ? Math.round(v * 100) + " %"
+      : it.pas >= 1
+        ? String(Math.round(v))
+        : (v > 0 && it.min < 0 ? "+" : "") + v.toFixed(it.pas < 0.01 ? 3 : 2);
+    input.style.setProperty("--p", ((v - it.min) / (it.max - it.min)) * 100 + "%");
+  }
+
+  function majDependances() {
+    champs.forEach(({ it, input, ligne }) => {
+      if (!it.dependDe) return;
+      const ok = Boolean(lire(reglages(), it.dependDe));
+      input.disabled = !ok;
+      ligne.classList.toggle("desactive", !ok);
+    });
   }
 
   function synchroniser() {
-    Object.values(champs).forEach(({ it, input, sortie }) => {
-      input.value = reglages[it.cle];
+    champs.forEach(({ it, input, sortie }) => {
+      const v = lire(reglages(), it.cle);
+      if (it.type === "toggle") input.checked = Boolean(v);
+      else input.value = v;
       majSortie(it, input, sortie);
     });
-    const tc = reglages.timecycle;
-    $("#tcActif").checked = tc.actif;
-    $("#tcModif").value = tc.modifier;
-    $("#tcForce").value = tc.force;
-    $("#tcForceOut").textContent = Math.round(tc.force * 100) + " %";
-    $("#tcOptions").classList.toggle("desactive", !tc.actif);
-    $$("#tcOptions select, #tcOptions input").forEach((el) => (el.disabled = !tc.actif));
+    majDependances();
   }
 
   let rafId = 0;
   function rendre() {
     cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(() => {
-      const base = imagePerso || Scene.image(scene, W, H);
-      crea.afficher(base, reglages);
-      $("#presetTexte").textContent = Exporteur.presetReShade(reglages);
+      const r = reglages();
+      const ambiance = Scene.ambiance(r.monde, scene);
+      // Avant : le jeu d'origine. Après : le pack (monde + couleurs).
+      const avant = imagePerso || Scene.image(scene, W, H);
+      const base = imagePerso || Scene.image(ambiance, W, H, r.monde);
+      crea.avant.putImageData(avant, 0, 0);
+      crea.apres.putImageData(Moteur.traiter(base, r), 0, 0);
+
+      $("#presetTexte").textContent = Exporteur.presetReShade(r);
+      const ressource = Exporteur.avecRessource(r);
+      $("#codeLua").hidden = !ressource;
+      if (ressource) $("#luaTexte").textContent = Exporteur.clientLua(r);
+
+      const monde = Exporteur.avecRessource({ ...r, timecycle: { actif: false } });
+      const note = $("#noteMonde");
+      note.hidden = !monde;
+      note.textContent = imagePerso || Scene.estCapture(ambiance)
+        ? "Le ciel, la météo, les nuages et les lumières ne peuvent pas être montrés sur une capture : ils seront appliqués en jeu par la ressource serveur."
+        : "Ciel, météo, nuages et lumières : aperçu sur le décor. En jeu, ils sont appliqués par la ressource serveur incluse dans le pack.";
     });
   }
 
-  function charger(r, nom) {
-    const copie = JSON.parse(JSON.stringify(r));
-    // On garde le choix "ressource serveur" de l'utilisateur si le pack n'en définit pas.
-    if (!copie.timecycle && reglages) copie.timecycle = { ...reglages.timecycle };
-    reglages = Moteur.complet(copie);
-    if (nom) $("#nomPack").value = nom;
+  function changerMode(nouveau) {
+    if (nouveau === mode && panneau.childElementCount) return;
+    noms[mode] = $("#nomPack").value;
+    mode = nouveau;
+    $$("#modes .mode").forEach((b) => {
+      const actif = b.dataset.mode === mode;
+      b.classList.toggle("actif", actif);
+      b.setAttribute("aria-selected", actif);
+    });
+    $("#nomPack").value = noms[mode];
+    construirePanneau();
     synchroniser();
     rendre();
+  }
+  $$("#modes .mode").forEach((b) => b.addEventListener("click", () => changerMode(b.dataset.mode)));
+
+  function charger(r, nom, modeCible = mode) {
+    etats[modeCible] = Moteur.complet(copie(r));
+    if (nom) noms[modeCible] = nom;
+    if (modeCible !== mode) changerMode(modeCible);
+    else {
+      if (nom) $("#nomPack").value = nom;
+      synchroniser();
+      rendre();
+    }
   }
 
   function personnaliser(p) {
     if (!imagePerso) choisirScene(p.scene, false);
-    charger(p.reglages, `${p.nom} (perso)`);
+    charger(p.reglages, `${p.nom} (perso)`, "realiste");
     $("#createur").scrollIntoView({ behavior: "smooth" });
-    toast(`« ${p.nom} » chargé dans le créateur`);
+    toast(`« ${p.nom} » chargé dans le mode réaliste`);
   }
 
   function choisirScene(s, rafraichir = true) {
@@ -328,7 +427,7 @@
       rendre();
       toast("Capture importée");
     };
-    img.onerror = () => toast("Image illisible");
+    img.onerror = () => toast("Image illisible : choisis un fichier .jpg ou .png");
     img.src = URL.createObjectURL(fichier);
     e.target.value = "";
   });
@@ -339,8 +438,8 @@
     if (!fichier) return;
     try {
       const data = JSON.parse(await fichier.text());
-      if (!data.reglages) throw new Error("fichier invalide");
-      charger(data.reglages, data.nom);
+      if (!data.reglages) throw new Error("ce fichier n'est pas un pack.json");
+      charger(data.reglages, data.nom, data.mode === "cvc" ? "cvc" : "realiste");
       if (data.auteur) $("#auteurPack").value = data.auteur;
       toast(`Pack « ${data.nom || "importé"} » chargé`);
     } catch (err) {
@@ -350,19 +449,28 @@
   });
 
   $("#btnReset").addEventListener("click", () => {
-    charger({}, "Mon pack");
+    charger(mode === "cvc" ? CVC_DEFAUT : {}, mode === "cvc" ? "Mon pack CVC" : "Mon pack réaliste");
     toast("Réglages remis à zéro");
   });
 
   $("#btnAleatoire").addEventListener("click", () => {
     const a = (min, max) => Math.round((min + Math.random() * (max - min)) * 100) / 100;
+    const parmi = (l) => l[Math.floor(Math.random() * l.length)];
     const teinte = () => "#" + [0, 0, 0].map(() => Math.floor(40 + Math.random() * 215).toString(16).padStart(2, "0")).join("");
-    charger({
-      exposure: a(-0.15, 0.2), gamma: a(0.85, 1.2), contrast: a(-0.1, 0.55),
-      saturation: a(-0.4, 0.35), vibrance: a(-0.1, 0.7), temperature: a(-0.5, 0.5), bleach: Math.random() > 0.7 ? a(0, 0.5) : 0,
-      shadowColor: teinte(), shadowStrength: a(0, 0.7), highlightColor: teinte(), highlightStrength: a(0, 0.6),
-      sharpen: a(0, 1), vignette: a(0, 0.6), timecycle: reglages.timecycle,
-    });
+    if (mode === "cvc") {
+      charger({
+        exposure: a(0, 0.4), vibrance: a(0.1, 0.7), contrast: a(0, 0.35), sharpen: a(0.3, 1.1),
+        monde: { heure: parmi(["midi", "midi", "coucher", "auto"]), meteo: parmi(["EXTRASUNNY", "CLEAR", "EXTRASUNNY"]), nuages: a(0, 0.5), lumieres: true },
+      });
+    } else {
+      charger({
+        exposure: a(-0.15, 0.2), gamma: a(0.85, 1.2), contrast: a(-0.1, 0.55), blackPoint: Math.round(a(0, 18)), whitePoint: Math.round(a(235, 255)),
+        saturation: a(-0.4, 0.35), vibrance: a(-0.1, 0.7), temperature: a(-0.5, 0.5), bleach: Math.random() > 0.7 ? a(0, 0.5) : 0,
+        shadowColor: teinte(), shadowStrength: a(0, 0.7), midColor: teinte(), midStrength: a(0, 0.4), highlightColor: teinte(), highlightStrength: a(0, 0.6),
+        sharpen: a(0, 1), grain: Math.random() > 0.6 ? a(0, 0.5) : 0, vignette: a(0, 0.6), vignetteRadius: a(1.2, 2),
+        monde: reglages().monde, timecycle: reglages().timecycle,
+      });
+    }
   });
 
   $("#btnTelecharger").addEventListener("click", async (e) => {
@@ -371,10 +479,11 @@
     const texte = btn.textContent;
     btn.textContent = "Génération…";
     try {
-      const f = await Exporteur.telecharger(reglages, {
-        nom: $("#nomPack").value.trim() || "Mon pack",
+      const f = await Exporteur.telecharger(reglages(), {
+        nom: $("#nomPack").value.trim() || noms[mode],
         auteur: $("#auteurPack").value.trim() || "Anonyme",
         scene,
+        mode,
       });
       toast(`${f} téléchargé ✔`);
     } catch (err) {
@@ -385,7 +494,8 @@
     }
   });
 
-  charger(PACKS[0].reglages, "Mon pack");
+  mode = "";
+  changerMode("cvc");
 
   // Utilisé par le carrousel de l'accueil (js/hero.js)
   window.ForgeUI = { ouvrirModale, toast };

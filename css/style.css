@@ -393,6 +393,39 @@ h3 { font-size: 1.3rem; letter-spacing: -0.015em; }
 .tag--d { right: 12px; background: var(--vert); color: #fff; }
 
 /* ---------- Créateur ---------- */
+.modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 24px; }
+.mode {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding: 20px 22px;
+  border: 1.5px solid var(--ligne);
+  border-radius: 20px;
+  background: var(--carte);
+  color: var(--texte);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.mode:hover { border-color: var(--vert); }
+.mode strong { font: 700 1.45rem/1.1 var(--titre); letter-spacing: -0.025em; }
+.mode__desc { color: var(--texte-2); font-size: 0.93rem; }
+.mode__tag {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--menthe);
+  color: var(--vert);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.mode.actif { border-color: var(--vert); background: var(--vert); color: #fff; box-shadow: 0 14px 30px -18px rgba(8, 72, 45, 0.8); }
+.mode.actif .mode__desc { color: rgba(255, 255, 255, 0.78); }
+.mode.actif .mode__tag { background: rgba(255, 255, 255, 0.16); color: #fff; }
+.groupe__note { margin-top: -6px; }
+.note-monde { padding: 10px 14px; border-radius: 12px; background: var(--menthe); color: var(--vert); }
+.interrupteur b { font-weight: 500; }
+
 .createur__actions-tete { display: flex; gap: 8px; flex-wrap: wrap; }
 .createur { display: grid; grid-template-columns: 1.5fr 1fr; gap: 24px; align-items: start; }
 .createur > * { min-width: 0; }
@@ -661,6 +694,9 @@ select:focus, .champ input:focus { outline: none; border-color: var(--vert); }
   .section { padding-block: 64px; }
   .etapes { grid-template-columns: 1fr; }
   .export { grid-template-columns: 1fr; }
+  .modes { grid-template-columns: 1fr; gap: 10px; }
+  .mode { padding: 16px 18px; }
+  .mode strong { font-size: 1.25rem; }
   .modale__corps { padding: 12px; }
   .modale__fermer { top: 18px; right: 18px; }
   .modale__infos h3 { font-size: 1.8rem; }
