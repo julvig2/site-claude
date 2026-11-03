@@ -32,6 +32,11 @@ const Communaute = (() => {
   let activites = new Map();  // membre → { favoris, telecharges, achats }
   let packsLocaux = [];
   let favorisLocaux = new Set();
+  // Commission du site (réglée par le propriétaire dans « Mon espace »)
+  let config = { taux: 0.1, lien: "" };
+  let recus = {};             // vendeur → { <versement>: montant confirmé }
+  let rendreEnAttente = false;
+  const formsOuverts = new Set();
 
   /* ---------- Démarrage ---------- */
   const lireLocal = (cle, defaut) => {
@@ -83,6 +88,100 @@ const Communaute = (() => {
       (snap) => { activites = new Map(snap.docs.map((d) => [d.id, d.data()])); afficher(); },
       () => {}
     );
+    db.doc("config/site").onSnapshot(
+      (s) => {
+        config = { taux: 0.1, lien: "", ...(s.exists ? s.data() : {}) };
+        majTextesCommission();
+        remplirAdmin();
+        afficher();
+      },
+      () => {}
+    );
+    db.doc("config/recus").onSnapshot(
+      (s) => { recus = s.exists ? s.data() : {}; afficher(); },
+      () => {}
+    );
+  }
+
+  /* ---------- Commission ---------- */
+  const arrondi = (n) => Math.round(n * 100) / 100;
+  const taux = () => Math.min(0.9, Math.max(0, Number(config.taux) || 0));
+  const pourcent = (t) => `${Math.round(t * 1000) / 10} %`.replace(".", ",");
+
+  /** Bilan d'un vendeur : ventes, commission due, versements déclarés / confirmés. */
+  function bilan(id) {
+    const m = membres.get(id) || {};
+    const ventes = Object.values(m.ventes || {}).filter((v) => v.statut === "valide");
+    const brut = arrondi(ventes.reduce((s, v) => s + Number(v.prix || 0), 0));
+    const commission = arrondi(ventes.reduce((s, v) => s + Number(v.commission ?? arrondi(v.prix * taux())), 0));
+    const confirmes = recus[id] || {};
+    const versements = Object.entries(m.versements || {}).map(([vid, v]) => ({ ...v, id: vid, confirme: vid in confirmes }));
+    const verse = arrondi(versements.filter((v) => v.confirme).reduce((s, v) => s + Number(v.montant || 0), 0));
+    const enAttente = arrondi(versements.filter((v) => !v.confirme).reduce((s, v) => s + Number(v.montant || 0), 0));
+    return {
+      pseudo: m.pseudo || "Sans pseudo", ventes: ventes.length, brut, commission,
+      net: arrondi(brut - commission), verse, enAttente, versements,
+      reste: Math.max(0, arrondi(commission - verse - enAttente)),
+    };
+  }
+
+  async function declarerVersement(montant) {
+    if (!peutEcrire()) return;
+    try {
+      await ecrireMembre((m) => {
+        m.versements = m.versements || {};
+        m.versements["v" + Date.now().toString(36)] = { montant: arrondi(montant), le: Date.now() };
+      });
+      afficher();
+      toast("Versement déclaré. Le propriétaire du site le confirmera dès qu'il l'aura reçu.");
+    } catch (e) { toast("Déclaration non enregistrée, réessaie."); }
+  }
+
+  async function confirmerVersement(vendeurId, versement) {
+    const copieRecus = copie(recus);
+    copieRecus[vendeurId] = { ...(copieRecus[vendeurId] || {}), [versement.id]: versement.montant };
+    try {
+      recus = copieRecus;
+      await db.doc("config/recus").set(copieRecus);
+      afficher();
+      toast(`Versement de ${euros(versement.montant)} confirmé`);
+    } catch (e) { toast("Confirmation non enregistrée, réessaie."); }
+  }
+
+  /** Textes « Le site prend X % » dans les cartes de création. */
+  function majTextesCommission() {
+    $$("[data-commission]").forEach((e) => {
+      e.textContent = taux() > 0
+        ? `Le site prend ${pourcent(taux())} de commission sur chaque vente, que tu lui verses ensuite depuis « Mon espace ».`
+        : "Le site ne prend pas de commission sur les ventes.";
+    });
+  }
+
+  /** Panneau du propriétaire : réglages de la commission. */
+  function remplirAdmin() {
+    const admin = $("#commuAdmin");
+    if (!admin) return;
+    const tauxEl = $("#adminTaux"), lienEl = $("#adminLien");
+    if (document.activeElement !== tauxEl) tauxEl.value = Math.round(taux() * 1000) / 10;
+    if (document.activeElement !== lienEl) lienEl.value = config.lien || "";
+  }
+
+  async function enregistrerConfig(e) {
+    e.preventDefault();
+    const t = parseFloat(String($("#adminTaux").value).replace(",", "."));
+    if (!(t >= 0 && t <= 90)) { toast("Choisis un taux entre 0 et 90 %."); return; }
+    let lien = $("#adminLien").value.trim();
+    if (lien) {
+      try {
+        const u = new URL(lien);
+        if (u.protocol !== "https:") throw new Error();
+        lien = u.href;
+      } catch (err) { toast("Le lien doit commencer par https:// (par exemple https://paypal.me/tonpseudo)."); return; }
+    }
+    try {
+      await db.doc("config/site").set({ taux: t / 100, lien, maj: Date.now() });
+      toast("Commission enregistrée");
+    } catch (err) { toast("Enregistrement impossible, réessaie."); }
   }
 
   /* ---------- Lecture ---------- */
@@ -258,6 +357,8 @@ const Communaute = (() => {
       await ecrireMembre((m) => {
         m.ventes[`${d.packId}__${d.acheteurId}`] = {
           packId: d.packId, acheteurId: d.acheteurId, acheteurNom: d.nomPaiement, prix: d.prix,
+          // commission figée au taux du moment (aucune pour les packs du propriétaire)
+          commission: valide && !proprio ? arrondi(d.prix * taux()) : 0,
           statut: valide ? "valide" : "refuse", le: Date.now(),
         };
       });
@@ -428,18 +529,23 @@ const Communaute = (() => {
       lien.target = "_blank";
       lien.rel = "noopener";
       btns.appendChild(lien);
-      const paye = bouton("J'ai payé", "btn--ghost", () => { form.hidden = !form.hidden; });
-      paye.setAttribute("aria-expanded", "false");
+      const paye = bouton("J'ai payé", "btn--ghost", () => {
+        form.hidden = !form.hidden;
+        form.hidden ? formsOuverts.delete(p.id) : formsOuverts.add(p.id);
+        paye.setAttribute("aria-expanded", String(!form.hidden));
+        if (!form.hidden) champ.focus();
+      });
+      paye.setAttribute("aria-expanded", String(formsOuverts.has(p.id)));
       let domaine = "";
       try { domaine = new URL(p.lien).hostname.replace(/^www\./, ""); } catch (e) { /* lien invalide */ }
       statut.textContent = `Paiement sur ${domaine || "le lien du vendeur"}, puis clique « J'ai payé ».`;
       // formulaire « J'ai payé »
       var form = el("form", "achat-form");
-      form.hidden = true;
+      form.hidden = !formsOuverts.has(p.id);
       const id = `paiement-${p.vendeurId || "x"}-${p.id}`;
       const label = el("label", "", "Nom ou pseudo utilisé pour payer");
       label.htmlFor = id;
-      const champ = el("input", "champ-texte champ-texte--normal");
+      var champ = el("input", "champ-texte champ-texte--normal");
       champ.id = id;
       champ.maxLength = 60;
       champ.required = true;
@@ -448,7 +554,11 @@ const Communaute = (() => {
       form.append(label, champ, envoyer);
       form.addEventListener("submit", (e) => {
         e.preventDefault();
-        if (champ.value.trim()) signalerPaiement(p, champ.value.trim());
+        if (champ.value.trim()) {
+          formsOuverts.delete(p.id);
+          champ.blur();
+          signalerPaiement(p, champ.value.trim());
+        }
       });
     } else if (achat === "attente") {
       statut.textContent = "Paiement signalé : en attente de validation par le vendeur.";
@@ -472,9 +582,113 @@ const Communaute = (() => {
     return d;
   }
 
+  /** Vrai si quelqu'un tape dans un champ de la communauté (on ne redessine pas sous ses doigts). */
+  function saisieEnCours() {
+    const a = document.activeElement;
+    return Boolean(a && (a.tagName === "INPUT" || a.tagName === "SELECT") && a.closest("#communaute") && !a.closest("#commuAdmin form"));
+  }
+
+  function afficherCommission() {
+    const bloc = $("#commuCommission");
+    bloc.textContent = "";
+    bloc.hidden = true;
+    if (!partage || !uid || proprio || onglet !== "mes") return;
+    const b = bilan(uid);
+    if (!b.ventes && !b.versements.length) return;
+    bloc.hidden = false;
+    bloc.appendChild(el("h3", "", `Commission du site (${pourcent(taux())})`));
+    const recap = el("p", "commission__recap");
+    recap.textContent = `Commission sur tes ventes : ${euros(b.commission)} · déjà versé et confirmé : ${euros(b.verse)}` +
+      (b.enAttente ? ` · déclaré, en attente de confirmation : ${euros(b.enAttente)}` : "");
+    bloc.appendChild(recap);
+    if (b.reste <= 0) {
+      bloc.appendChild(el("p", "commission__ok", b.enAttente ? "Tout est déclaré. Merci !" : "Tu es à jour. Merci !"));
+      return;
+    }
+    const du = el("p", "commission__du");
+    du.append(document.createTextNode("Reste à verser : "), el("strong", "", euros(b.reste)));
+    bloc.appendChild(du);
+    const actions = el("div", "commission__actions");
+    if (config.lien) {
+      const lien = el("a", "btn btn--petit", `Payer ${euros(b.reste)}`);
+      lien.href = config.lien;
+      lien.target = "_blank";
+      lien.rel = "noopener";
+      actions.appendChild(lien);
+    } else {
+      actions.appendChild(el("p", "astuce", "Le propriétaire n'a pas encore indiqué où verser la commission."));
+    }
+    const form = el("form", "commission__form");
+    const label = el("label", "", "Montant versé (€)");
+    label.htmlFor = "montantVerse";
+    const champ = el("input", "champ-texte champ-texte--normal");
+    champ.id = "montantVerse";
+    champ.type = "number";
+    champ.min = "0.01";
+    champ.step = "0.01";
+    champ.value = b.reste.toFixed(2);
+    const ok = el("button", "btn btn--petit btn--ghost", "J'ai versé");
+    ok.type = "submit";
+    form.append(label, champ, ok);
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const v = parseFloat(String(champ.value).replace(",", "."));
+      if (!(v > 0)) { toast("Indique le montant versé."); return; }
+      champ.blur();
+      declarerVersement(v);
+    });
+    actions.appendChild(form);
+    bloc.appendChild(actions);
+  }
+
+  function afficherAdmin() {
+    const admin = $("#commuAdmin");
+    admin.hidden = !(partage && proprio && onglet === "mes");
+    if (admin.hidden) return;
+    const zone = $("#adminVendeurs");
+    zone.textContent = "";
+    const vendeurs = [...membres.keys()].filter((id) => id !== uid).map((id) => ({ id, ...bilan(id) }))
+      .filter((b) => b.ventes || b.versements.length)
+      .sort((a, b) => b.reste + b.enAttente - (a.reste + a.enAttente));
+    const total = vendeurs.reduce((s, b) => ({ du: s.du + b.commission, recu: s.recu + b.verse }), { du: 0, recu: 0 });
+    $("#adminTotal").textContent = `Commissions dues au total : ${euros(total.du)} · reçues et confirmées : ${euros(total.recu)} · reste à recevoir : ${euros(Math.max(0, total.du - total.recu))}`;
+    if (!vendeurs.length) {
+      zone.appendChild(el("p", "astuce", "Aucune vente validée pour l'instant chez les autres membres."));
+      return;
+    }
+    const enveloppe = el("div", "tableau");
+    const table = el("table");
+    const tete = el("tr");
+    ["Vendeur", "Ventes", "Chiffre d'affaires", "Commission", "Reçu", "Reste", ""].forEach((t) => tete.appendChild(el("th", "", t)));
+    table.appendChild(el("thead")).appendChild(tete);
+    const corps = el("tbody");
+    vendeurs.forEach((b) => {
+      const tr = el("tr");
+      [b.pseudo, String(b.ventes), euros(b.brut), euros(b.commission), euros(b.verse), euros(Math.max(0, arrondi(b.commission - b.verse)))]
+        .forEach((t) => tr.appendChild(el("td", "", t)));
+      const cell = el("td", "tableau__actions");
+      b.versements.filter((v) => !v.confirme).forEach((v) => {
+        const btn = el("button", "btn btn--petit", `Confirmer ${euros(v.montant)} reçu`);
+        btn.type = "button";
+        btn.title = `Déclaré ${quand(v.le)}`;
+        btn.addEventListener("click", () => confirmerVersement(b.id, v));
+        cell.appendChild(btn);
+      });
+      tr.appendChild(cell);
+      corps.appendChild(tr);
+    });
+    table.appendChild(corps);
+    enveloppe.appendChild(table);
+    zone.appendChild(enveloppe);
+  }
+
   function afficher() {
     const grille = $("#commuGrille");
     if (!grille) return;
+    if (saisieEnCours()) { rendreEnAttente = true; return; }
+    rendreEnAttente = false;
+    afficherCommission();
+    afficherAdmin();
     $$("#ongletsCommu button").forEach((b) => {
       const actif = b.dataset.onglet === onglet;
       b.classList.toggle("actif", actif);
@@ -519,6 +733,10 @@ const Communaute = (() => {
         tuile("Ventes", String(ventes)),
         tuile("Argent généré", euros(revenus))
       );
+      if (partage && uid && !proprio && ventes) {
+        const b = bilan(uid);
+        stats.append(tuile(`Commission du site`, euros(b.commission)), tuile("Ce qui te reste", euros(b.net)));
+      }
 
       const demandes = demandesATraiter();
       if (demandes.length) {
@@ -575,6 +793,11 @@ const Communaute = (() => {
     document.addEventListener("captures-chargees", () => { vignettes.clear(); afficher(); });
     relierVente("Pack");
     relierVente("Son");
+    // on redessine dès que la personne a fini de taper
+    $("#communaute").addEventListener("focusout", () => setTimeout(() => { if (rendreEnAttente) afficher(); }, 0));
+    const formAdmin = $("#commuAdmin form");
+    if (formAdmin) formAdmin.addEventListener("submit", enregistrerConfig);
+    majTextesCommission();
     afficher();
     init();
   }

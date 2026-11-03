@@ -144,7 +144,7 @@
                   <label for="lienPack">Ton lien de paiement</label>
                   <input id="lienPack" type="url" placeholder="https://paypal.me/tonpseudo" />
                 </div>
-                <p class="astuce">Les acheteurs paient sur ton lien (PayPal.me, Tebex, Stripe, Ko-fi…). Le site ne touche pas l'argent : tu valides chaque paiement reçu dans « Mon espace », et l'acheteur peut alors télécharger.</p>
+                <p class="astuce">Les acheteurs paient sur ton lien (PayPal.me, Tebex, Stripe, Ko-fi…). Tu valides chaque paiement reçu dans « Mon espace », et l'acheteur peut alors télécharger. <span data-commission></span></p>
               </div>
               <button class="btn btn--plein" id="btnTelecharger">Créer le pack</button>
               <details class="code">
@@ -232,7 +232,7 @@
                   <label for="lienSon">Ton lien de paiement</label>
                   <input id="lienSon" type="url" placeholder="https://paypal.me/tonpseudo" />
                 </div>
-                <p class="astuce">Les acheteurs paient sur ton lien. Tu valides chaque paiement reçu dans « Mon espace ».</p>
+                <p class="astuce">Les acheteurs paient sur ton lien. Tu valides chaque paiement reçu dans « Mon espace ». <span data-commission></span></p>
               </div>
               <button class="btn btn--plein" id="btnCreerSon" type="button">4. Créer le pack son</button>
               <p class="astuce">Le pack contient le son en WAV et une ressource FiveM qui le joue à chaque tir, pour toi et les joueurs proches.</p>
@@ -258,7 +258,24 @@
           </div>
         </div>
         <p class="astuce commu__etat" id="commuEtat" hidden></p>
+        <div class="carte admin" id="commuAdmin" hidden>
+          <h3>Commission du site <span class="admin__prive">visible par toi seulement</span></h3>
+          <form class="admin__form">
+            <div class="champ">
+              <label for="adminTaux">Taux de commission (%)</label>
+              <input id="adminTaux" type="number" min="0" max="90" step="0.5" value="10" inputmode="decimal" />
+            </div>
+            <div class="champ">
+              <label for="adminLien">Ton lien pour recevoir les commissions</label>
+              <input id="adminLien" type="url" placeholder="https://paypal.me/tonpseudo" />
+            </div>
+            <button class="btn btn--petit" type="submit">Enregistrer</button>
+          </form>
+          <p class="astuce" id="adminTotal"></p>
+          <div id="adminVendeurs"></div>
+        </div>
         <div class="stats" id="commuStats" hidden></div>
+        <div class="carte commission" id="commuCommission" hidden></div>
         <div class="carte demandes" id="commuDemandes" hidden></div>
         <div class="grille" id="commuGrille"></div>
         <p class="vide" id="commuVide" hidden></p>
@@ -292,7 +309,7 @@
         <details><summary>Est-ce que ça fait baisser mes FPS ?</summary><p>Très peu. Le créateur n'ajoute dans le preset que les effets que tu utilises vraiment, et ce sont des effets légers. La netteté et la vignette sont les plus coûteux, et restent faibles.</p></details>
         <details><summary>L'aperçu est-il identique au jeu ?</summary><p>L'aperçu applique les mêmes formules que les shaders ReShade exportés. Le rendu final dépend aussi de la météo et de l'heure en jeu : importe une capture de ton serveur pour un aperçu plus fidèle.</p></details>
         <details><summary>Je peux modifier un pack acheté ?</summary><p>Oui. Chaque pack contient un <code>pack.json</code> : importe-le dans le créateur, ajuste ce que tu veux et télécharge ta version.</p></details>
-        <details><summary>Comment vendre mes packs ?</summary><p>En créant ton pack, coche « Vendre ce pack », choisis un prix et colle ton lien de paiement (PayPal.me, Tebex, Stripe, Ko-fi…). L'acheteur paie sur ton lien, puis clique « J'ai payé » en indiquant le nom utilisé pour payer. Tu vérifies que l'argent est arrivé et tu valides la vente dans « Mon espace » : il peut alors télécharger le pack. Le site ne touche pas l'argent et ne prend pas de commission. Dans « Mon espace », tu vois combien de fois tes packs ont été mis en favori, téléchargés, vendus, et l'argent qu'ils t'ont rapporté.</p></details>
+        <details><summary>Comment vendre mes packs ?</summary><p>En créant ton pack, coche « Vendre ce pack », choisis un prix et colle ton lien de paiement (PayPal.me, Tebex, Stripe, Ko-fi…). L'acheteur paie sur ton lien, puis clique « J'ai payé » en indiquant le nom utilisé pour payer. Tu vérifies que l'argent est arrivé et tu valides la vente dans « Mon espace » : il peut alors télécharger le pack. Le site prend une commission sur chaque vente (10 % par défaut, réglable par le propriétaire) : tu la vois dans « Mon espace » et tu la lui verses depuis cet espace. Dans « Mon espace », tu vois combien de fois tes packs ont été mis en favori, téléchargés, vendus, et l'argent qu'ils t'ont rapporté.</p></details>
         <details><summary>Comment désinstaller ?</summary><p>Supprime <code>dxgi.dll</code> du dossier <code>FiveM.app/plugins</code>. Côté serveur, retire la ligne <code>ensure</code> de ton <code>server.cfg</code>.</p></details>
       </div>
     </section>

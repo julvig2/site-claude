@@ -66,8 +66,12 @@ js/vendor/jszip.min.js   JSZip 3.10.1 (MIT)
 
 ## Ventes : comment c'est protégé
 
+### Commission du site
+
+Le propriétaire du site règle dans *Mon espace* (panneau visible par lui seul) le taux de commission (10 % par défaut) et le lien où il reçoit les commissions. À chaque vente validée, la commission est calculée au taux du moment et figée. Chaque vendeur voit dans *Mon espace* son argent généré, la commission du site et ce qui lui reste, avec un bouton pour payer et déclarer son versement. Le propriétaire voit ce que chaque vendeur lui doit et confirme chaque versement reçu. Ce système repose sur la confiance : rien n'oblige un vendeur à payer. Pour un prélèvement automatique, il faut une vraie place de marché (par exemple Stripe Connect) avec un serveur.
+
 Le site n'encaisse rien et n'a pas de serveur de paiement : il ne peut donc pas vérifier tout seul qu'un paiement a eu lieu. C'est le vendeur qui valide chaque vente.
 
-Dans la base de la version en ligne, chaque membre n'écrit que ses propres documents (`membres/<id>`, `activite/<id>`, `fichiers/<id>/…`). Personne ne peut donc modifier le lien de paiement d'un autre, ni valider ses propres achats.
+Dans la base de la version en ligne, chaque membre n'écrit que ses propres documents (`membres/<id>`, `activite/<id>`, `fichiers/<id>/…`), et seul le propriétaire écrit les réglages de commission et les versements confirmés (`config/…`). Personne ne peut donc modifier le lien de paiement d'un autre, ni valider ses propres achats.
 
 En revanche, les réglages d'un pack payant restent lisibles par un membre qui fouille le code de la page. Une vraie protection (et des paiements validés automatiquement) demande un serveur avec un service de paiement (par exemple Stripe et ses webhooks).
