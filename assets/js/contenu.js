@@ -31,7 +31,7 @@ const SITE = {
 
   // Espace admin (voir worker/INSTALLATION.md) :
   // adresse du serveur Cloudflare Worker et identifiant de l'application Twitch.
-  api: "https://julvig-api.julian-vigourous.workers.dev",
+  api: "https://julvig-api.valkor.workers.dev",
   twitchClientId: "nz4etpbdaepomsi7hhcqxfv6ky41ha",
 
   reseaux: [
