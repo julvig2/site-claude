@@ -393,14 +393,16 @@ h3 { font-size: 1.3rem; letter-spacing: -0.015em; }
 .tag--d { right: 12px; background: var(--vert); color: #fff; }
 
 /* ---------- Créateur ---------- */
-.modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 24px; }
+.modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 20px; max-width: 720px; }
 .mode {
   display: grid;
-  gap: 6px;
-  justify-items: start;
-  padding: 20px 22px;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  padding: 10px 14px;
   border: 1.5px solid var(--ligne);
-  border-radius: 20px;
+  border-radius: 14px;
   background: var(--carte);
   color: var(--texte);
   font: inherit;
@@ -409,10 +411,14 @@ h3 { font-size: 1.3rem; letter-spacing: -0.015em; }
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 .mode:hover { border-color: var(--vert); }
-.mode strong { font: 700 1.45rem/1.1 var(--titre); letter-spacing: -0.025em; }
-.mode__desc { color: var(--texte-2); font-size: 0.93rem; }
+.mode strong { grid-column: 1; grid-row: 1; font: 700 1.05rem/1.2 var(--titre); letter-spacing: -0.02em; }
+.mode__desc { grid-column: 1 / -1; color: var(--texte-2); font-size: 0.8rem; line-height: 1.35; }
 .mode__tag {
-  padding: 3px 10px;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: start;
+  padding: 2px 8px;
+  font-size: 0.7rem !important;
   border-radius: 999px;
   background: var(--menthe);
   color: var(--vert);
@@ -694,9 +700,10 @@ select:focus, .champ input:focus { outline: none; border-color: var(--vert); }
   .section { padding-block: 64px; }
   .etapes { grid-template-columns: 1fr; }
   .export { grid-template-columns: 1fr; }
-  .modes { grid-template-columns: 1fr; gap: 10px; }
-  .mode { padding: 16px 18px; }
-  .mode strong { font-size: 1.25rem; }
+  .modes { gap: 8px; }
+  .mode { padding: 9px 11px; }
+  .mode strong { font-size: 0.98rem; }
+  .mode__desc { display: none; }
   .modale__corps { padding: 12px; }
   .modale__fermer { top: 18px; right: 18px; }
   .modale__infos h3 { font-size: 1.8rem; }
