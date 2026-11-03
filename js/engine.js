@@ -277,6 +277,15 @@ const Scene = (() => {
   }
 
   const cache = new Map();
+  const photos = {}; // captures d'écran GTA chargées depuis CAPTURES (js/data.js)
+
+  /** Dessine une image en remplissant tout le cadre (recadrage centré). */
+  function couvrir(ctx, img, w, h) {
+    const k = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+    const dw = img.naturalWidth * k, dh = img.naturalHeight * k;
+    ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  }
+
   /** Renvoie l'ImageData de la scène (mise en cache par mode + taille). */
   function image(mode, w, h) {
     const cle = `${mode}:${w}x${h}`;
@@ -285,13 +294,45 @@ const Scene = (() => {
       c.width = w;
       c.height = h;
       const ctx = c.getContext("2d");
-      dessiner(ctx, w, h, mode);
-      cache.set(cle, ctx.getImageData(0, 0, w, h));
+      let data = null;
+      if (photos[mode]) {
+        couvrir(ctx, photos[mode], w, h);
+        try {
+          data = ctx.getImageData(0, 0, w, h);
+        } catch (e) {
+          // Le navigateur bloque la lecture des images ouvertes en file:// :
+          // on repasse sur le décor dessiné.
+          console.warn(`Capture "${mode}" illisible ici (ouvrez le site via un serveur web).`);
+          delete photos[mode];
+          ctx.clearRect(0, 0, w, h);
+        }
+      }
+      if (!data) {
+        dessiner(ctx, w, h, mode);
+        data = ctx.getImageData(0, 0, w, h);
+      }
+      cache.set(cle, data);
     }
     return cache.get(cle);
   }
 
-  return { image, modes: Object.keys(AMBIANCES) };
+  /** Charge les captures d'écran. Résout avec la liste des ambiances chargées. */
+  function charger(captures) {
+    const taches = Object.entries(captures || {})
+      .filter(([, src]) => src)
+      .map(([mode, src]) => new Promise((ok) => {
+        const img = new Image();
+        img.onload = () => { photos[mode] = img; ok(); };
+        img.onerror = () => { console.warn(`Capture introuvable : ${src}`); ok(); };
+        img.src = src;
+      }));
+    return Promise.all(taches).then(() => {
+      cache.clear();
+      return Object.keys(photos);
+    });
+  }
+
+  return { image, charger, modes: Object.keys(AMBIANCES) };
 })();
 
 const Moteur = (() => {

@@ -10,6 +10,18 @@ const SITE = {
   devise: "€",
 };
 
+/*
+  Captures d'écran GTA utilisées pour les aperçus (avant / après).
+  Prenez 3 captures en jeu (touche Impr. écran ou F12 sur Steam), en 16:9,
+  SANS pack graphique, et placez-les dans le dossier "images" avec ces noms.
+  Tant qu'une image manque, le site affiche un décor dessiné à la place.
+*/
+const CAPTURES = {
+  jour: "images/jour.jpg",
+  coucher: "images/coucher.jpg",
+  nuit: "images/nuit.jpg",
+};
+
 /* Réglages neutres : le jeu sans modification. */
 const REGLAGES_NEUTRES = {
   exposure: 0,            // Tonemap.fx  → Exposure   (-1 … 1)

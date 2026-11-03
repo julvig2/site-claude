@@ -92,6 +92,10 @@
   });
 
   const grille = $("#grille");
+  const vignettes = [];
+  function dessinerVignettes() {
+    vignettes.forEach(({ ctx, p }) => ctx.putImageData(Moteur.traiter(Scene.image(p.scene, 480, 270), p.reglages), 0, 0));
+  }
   PACKS.forEach((p) => {
     const carte = document.createElement("article");
     carte.className = "pack";
@@ -115,12 +119,14 @@
         </div>
       </div>`;
     const ctx = $("canvas", carte).getContext("2d");
-    ctx.putImageData(Moteur.traiter(Scene.image(p.scene, 480, 270), p.reglages), 0, 0);
+    vignettes.push({ ctx, p });
     $(".pack__visuel", carte).addEventListener("click", () => ouvrirModale(p));
     $('[data-action="voir"]', carte).addEventListener("click", () => ouvrirModale(p));
     $('[data-action="perso"]', carte).addEventListener("click", () => personnaliser(p));
     grille.appendChild(carte);
   });
+
+  dessinerVignettes();
 
   const recherche = $("#recherche");
   recherche.addEventListener("input", filtrer);
@@ -139,8 +145,10 @@
   const modale = $("#modale");
   const modaleComp = initComparer($("#modaleComparer"));
   let packModale = null;
+  let sceneModale = null;
 
   function afficherModale(scene) {
+    sceneModale = scene;
     $$("#modaleScenes button").forEach((b) => b.classList.toggle("actif", b.dataset.scene === scene));
     modaleComp.afficher(Scene.image(scene, W, H), packModale.reglages);
   }
@@ -403,4 +411,13 @@
   });
 
   charger(PACKS[0].reglages, "Mon pack");
+
+  /* ---------- Captures GTA (js/data.js → CAPTURES) ---------- */
+  Scene.charger(typeof CAPTURES === "undefined" ? {} : CAPTURES).then((chargees) => {
+    if (!chargees.length) return;
+    hero.afficher(Scene.image(vedette.scene, W, H), vedette.reglages);
+    dessinerVignettes();
+    if (modale.open && packModale) afficherModale(sceneModale);
+    rendre();
+  });
 })();

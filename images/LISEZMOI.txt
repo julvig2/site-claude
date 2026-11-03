@@ -1,0 +1,8 @@
+Mettez ici 3 captures d'écran de GTA V / FiveM (en jeu, SANS pack graphique) :
+
+  jour.jpg      → une scène en pleine journée
+  coucher.jpg   → une scène au coucher du soleil
+  nuit.jpg      → une scène de nuit
+
+Format conseillé : 1920x1080 (16:9), en .jpg. Les noms doivent être exacts.
+Pour utiliser d'autres noms ou des .png, modifiez CAPTURES dans js/data.js.

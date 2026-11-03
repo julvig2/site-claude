@@ -25,10 +25,19 @@ Le site peut être hébergé tel quel sur GitHub Pages, Netlify, Vercel ou n'imp
 
 ## Personnaliser
 
+### Mettre des captures de GTA
+
+Prenez 3 captures d'écran en jeu, **sans pack graphique**, en 16:9, et placez-les dans le dossier `images/` :
+`jour.jpg`, `coucher.jpg` et `nuit.jpg`. Elles remplacent automatiquement le décor dessiné dans tous les aperçus.
+Le navigateur bloque la lecture des images quand on ouvre `index.html` en double-clic : les captures s'affichent une fois le site hébergé ou lancé avec `python3 -m http.server`.
+
+### Le reste
+
 Tout se règle dans `js/data.js` :
 
 - `SITE` : nom du site, lien Discord, devise ;
 - `PACKS` : le catalogue. `prix: 0` donne un téléchargement direct. Pour un pack payant, renseignez `lienAchat` (Tebex, Stripe Payment Link, PayPal…) ;
+- `CAPTURES` : les chemins des captures d'écran ;
 - `TIMECYCLES` : les filtres proposés pour la ressource serveur.
 
 Les couleurs et polices se trouvent en haut de `css/style.css` (variables `:root`).
