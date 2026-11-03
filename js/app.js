@@ -556,6 +556,11 @@
 
   $("#btnTelecharger").addEventListener("click", async (e) => {
     const btn = e.currentTarget;
+    const vente = typeof Communaute !== "undefined" ? Communaute.lireVente("Pack") : { prix: 0, lien: "" };
+    if (vente.erreur) {
+      toast(vente.erreur);
+      return;
+    }
     btn.disabled = true;
     const texte = btn.textContent;
     btn.textContent = "Génération…";
@@ -569,8 +574,8 @@
       const f = await Exporteur.telecharger(reglages(), meta);
       let msg = `${f} téléchargé ✔`;
       if ($("#publierPack").checked && typeof Communaute !== "undefined") {
-        const ok = await Communaute.publier({ type: "graphique", mode, nom: meta.nom, auteur: meta.auteur, scene, reglages: copie(reglages()) });
-        if (ok) msg += " · publié dans les derniers packs";
+        const ok = await Communaute.publier({ type: "graphique", mode, nom: meta.nom, auteur: meta.auteur, scene, reglages: copie(reglages()), prix: vente.prix, lien: vente.lien });
+        if (ok) msg += vente.prix ? ` · en vente à ${vente.prix.toFixed(2).replace(".", ",")} €` : " · publié dans les derniers packs";
       }
       toast(msg);
     } catch (err) {

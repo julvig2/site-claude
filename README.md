@@ -7,7 +7,7 @@ Site statique (HTML/CSS/JS, sans build) avec :
   - **CVC** : mode *All time* (le jeu garde son cycle jour / nuit), *One time jour* ou *One time nuit* ; une ambiance toute prête (Bleu glacé, Rose, Violet, Doré, Menthe, Rouge…) ou tes couleurs (ciel, lumière) et la quantité de nuages ; luminosité, brouillard (aucun, léger, épais) et optimisation (Qualité, Équilibrée, Max FPS) ;
   - **Réaliste** : tous les réglages (exposition, gamma, contraste, points noir et blanc, saturation, vibrance, température, délavé, teintes des ombres / tons moyens / lumières, netteté, grain, vignette, monde, filtre timecycle, optimisation).
 - **Pack son** : dépose un son (MP3, WAV, OGG…) ou prends-en un dans la bibliothèque (sons de tir générés par le site), sélectionne le passage sur l'onde (0,86 s par défaut), écoute, choisis l'arme, puis crée le pack.
-- **Communauté** : *Derniers packs*, *Populaires* (classement par nombre de membres qui ont téléchargé) et *Mes packs* (tes packs et tes stats). Partagée entre les membres sur la version en ligne ; ailleurs, les packs restent dans le navigateur.
+- **Communauté** : *Derniers packs*, *Populaires* (classement par téléchargements et favoris), *Favoris* et *Mon espace*. Chacun peut mettre un pack en favori et **vendre ses packs** : prix + son propre lien de paiement (PayPal.me, Tebex, Stripe, Ko-fi…). L'acheteur paie sur ce lien puis clique « J'ai payé » ; le vendeur vérifie et valide la vente dans *Mon espace*, ce qui débloque le téléchargement. *Mon espace* affiche les favoris reçus, les téléchargements, les ventes et l'argent généré, au total et par pack. Tout cela est partagé entre les membres sur la version en ligne ; ailleurs, les packs et favoris restent dans le navigateur et la vente est désactivée.
 
 - **L'export d'un vrai pack `.zip`** :
   - `plugins/<pack>.ini` : preset **ReShade** pour les couleurs, la lumière et la netteté (effets *Standard effects* : Levels, Tonemap, LiftGammaGain, Vibrance, Curves, LumaSharpen, FilmGrain, Vignette ; seuls les effets réglés sont activés) ;
@@ -63,3 +63,11 @@ js/communaute.js     derniers packs, populaires, mes packs
 js/hero.js           accueil (carrousel courbé, animation d'entrée)
 js/vendor/jszip.min.js   JSZip 3.10.1 (MIT)
 ```
+
+## Ventes : comment c'est protégé
+
+Le site n'encaisse rien et n'a pas de serveur de paiement : il ne peut donc pas vérifier tout seul qu'un paiement a eu lieu. C'est le vendeur qui valide chaque vente.
+
+Dans la base de la version en ligne, chaque membre n'écrit que ses propres documents (`membres/<id>`, `activite/<id>`, `fichiers/<id>/…`). Personne ne peut donc modifier le lien de paiement d'un autre, ni valider ses propres achats.
+
+En revanche, les réglages d'un pack payant restent lisibles par un membre qui fouille le code de la page. Une vraie protection (et des paiements validés automatiquement) demande un serveur avec un service de paiement (par exemple Stripe et ses webhooks).

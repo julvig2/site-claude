@@ -134,6 +134,18 @@
                 <input id="auteurPack" maxlength="40" placeholder="Ton pseudo" />
               </div>
               <label class="interrupteur export__publier"><input type="checkbox" id="publierPack" checked /><span></span><b>Publier dans les derniers packs</b></label>
+              <label class="interrupteur export__publier"><input type="checkbox" id="vendrePack" /><span></span><b>Vendre ce pack</b></label>
+              <div class="vente" id="ventePack" hidden>
+                <div class="champ">
+                  <label for="prixPack">Prix (€)</label>
+                  <input id="prixPack" type="number" min="0.5" max="200" step="0.01" value="2.99" inputmode="decimal" />
+                </div>
+                <div class="champ">
+                  <label for="lienPack">Ton lien de paiement</label>
+                  <input id="lienPack" type="url" placeholder="https://paypal.me/tonpseudo" />
+                </div>
+                <p class="astuce">Les acheteurs paient sur ton lien (PayPal.me, Tebex, Stripe, Ko-fi…). Le site ne touche pas l'argent : tu valides chaque paiement reçu dans « Mon espace », et l'acheteur peut alors télécharger.</p>
+              </div>
               <button class="btn btn--plein" id="btnTelecharger">Créer le pack</button>
               <details class="code">
                 <summary>Voir le preset ReShade généré</summary>
@@ -210,6 +222,18 @@
                 <input id="auteurSon" maxlength="40" placeholder="Ton pseudo" />
               </div>
               <label class="interrupteur export__publier"><input type="checkbox" id="publierSon" checked /><span></span><b>Publier dans les derniers packs</b></label>
+              <label class="interrupteur export__publier"><input type="checkbox" id="vendreSon" /><span></span><b>Vendre ce pack</b></label>
+              <div class="vente" id="venteSon" hidden>
+                <div class="champ">
+                  <label for="prixSon">Prix (€)</label>
+                  <input id="prixSon" type="number" min="0.5" max="200" step="0.01" value="1.99" inputmode="decimal" />
+                </div>
+                <div class="champ">
+                  <label for="lienSon">Ton lien de paiement</label>
+                  <input id="lienSon" type="url" placeholder="https://paypal.me/tonpseudo" />
+                </div>
+                <p class="astuce">Les acheteurs paient sur ton lien. Tu valides chaque paiement reçu dans « Mon espace ».</p>
+              </div>
               <button class="btn btn--plein" id="btnCreerSon" type="button">4. Créer le pack son</button>
               <p class="astuce">Le pack contient le son en WAV et une ressource FiveM qui le joue à chaque tir, pour toi et les joueurs proches.</p>
             </div>
@@ -229,11 +253,13 @@
           <div class="onglets" id="ongletsCommu" role="tablist" aria-label="Packs des membres">
             <button class="actif" data-onglet="derniers" role="tab" aria-selected="true">Derniers packs</button>
             <button data-onglet="populaires" role="tab" aria-selected="false">Populaires</button>
-            <button data-onglet="mes" role="tab" aria-selected="false">Mes packs</button>
+            <button data-onglet="favoris" role="tab" aria-selected="false">Favoris</button>
+            <button data-onglet="mes" role="tab" aria-selected="false">Mon espace</button>
           </div>
         </div>
         <p class="astuce commu__etat" id="commuEtat" hidden></p>
         <div class="stats" id="commuStats" hidden></div>
+        <div class="carte demandes" id="commuDemandes" hidden></div>
         <div class="grille" id="commuGrille"></div>
         <p class="vide" id="commuVide" hidden></p>
       </div>
@@ -266,6 +292,7 @@
         <details><summary>Est-ce que ça fait baisser mes FPS ?</summary><p>Très peu. Le créateur n'ajoute dans le preset que les effets que tu utilises vraiment, et ce sont des effets légers. La netteté et la vignette sont les plus coûteux, et restent faibles.</p></details>
         <details><summary>L'aperçu est-il identique au jeu ?</summary><p>L'aperçu applique les mêmes formules que les shaders ReShade exportés. Le rendu final dépend aussi de la météo et de l'heure en jeu : importe une capture de ton serveur pour un aperçu plus fidèle.</p></details>
         <details><summary>Je peux modifier un pack acheté ?</summary><p>Oui. Chaque pack contient un <code>pack.json</code> : importe-le dans le créateur, ajuste ce que tu veux et télécharge ta version.</p></details>
+        <details><summary>Comment vendre mes packs ?</summary><p>En créant ton pack, coche « Vendre ce pack », choisis un prix et colle ton lien de paiement (PayPal.me, Tebex, Stripe, Ko-fi…). L'acheteur paie sur ton lien, puis clique « J'ai payé » en indiquant le nom utilisé pour payer. Tu vérifies que l'argent est arrivé et tu valides la vente dans « Mon espace » : il peut alors télécharger le pack. Le site ne touche pas l'argent et ne prend pas de commission. Dans « Mon espace », tu vois combien de fois tes packs ont été mis en favori, téléchargés, vendus, et l'argent qu'ils t'ont rapporté.</p></details>
         <details><summary>Comment désinstaller ?</summary><p>Supprime <code>dxgi.dll</code> du dossier <code>FiveM.app/plugins</code>. Côté serveur, retire la ligne <code>ensure</code> de ton <code>server.cfg</code>.</p></details>
       </div>
     </section>

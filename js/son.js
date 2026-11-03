@@ -654,6 +654,11 @@ server_script 'server.lua'
     $("#btnCreerSon").addEventListener("click", async (e) => {
       const m = etat();
       if (!m) return;
+      const vente = typeof Communaute !== "undefined" ? Communaute.lireVente("Son") : { prix: 0, lien: "" };
+      if (vente.erreur) {
+        toast(vente.erreur);
+        return;
+      }
       const btn = e.currentTarget;
       btn.disabled = true;
       try {
@@ -661,10 +666,10 @@ server_script 'server.lua'
         let msg = `${f} téléchargé ✔`;
         if ($("#publierSon").checked && typeof Communaute !== "undefined") {
           const ok = await Communaute.publier(
-            { type: "son", nom: m.nom, auteur: m.auteur, son: { arme: m.arme, armeNom: m.armeNom, volume: m.volume, portee: m.portee, duree: m.duree, pics: m.pics } },
+            { type: "son", nom: m.nom, auteur: m.auteur, prix: vente.prix, lien: vente.lien, son: { arme: m.arme, armeNom: m.armeNom, volume: m.volume, portee: m.portee, duree: m.duree, pics: m.pics } },
             versBase64(m.wav)
           );
-          if (ok) msg += " · publié dans les derniers packs";
+          if (ok) msg += vente.prix ? ` · en vente à ${vente.prix.toFixed(2).replace(".", ",")} €` : " · publié dans les derniers packs";
         }
         toast(msg);
       } catch (err) {
