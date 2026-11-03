@@ -7,62 +7,55 @@
   <meta name="description" content="Packs graphiques FiveM prêts à installer et créateur de pack personnalisé : réglez les couleurs, voyez l'aperçu en direct et téléchargez votre preset ReShade." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&family=Inter+Tight:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-  <div class="grain" aria-hidden="true"></div>
-
-  <header class="nav">
-    <div class="wrap nav__in">
-      <a href="#top" class="logo"><span class="logo__mark">▲</span><span data-site-nom>FORGE PACK</span></a>
-      <nav class="nav__liens" id="menu">
-        <a href="#packs">Packs</a>
-        <a href="#createur">Créateur</a>
-        <a href="#installation">Installation</a>
-        <a href="#faq">FAQ</a>
-      </nav>
-      <a class="btn btn--petit" data-discord target="_blank" rel="noopener">Discord</a>
-      <button class="nav__burger" id="burger" aria-label="Menu" aria-expanded="false"><span></span><span></span></button>
-    </div>
-  </header>
-
   <main id="top">
-    <!-- HERO -->
+    <!-- ACCUEIL : cadre 1440×1080 mis à l'échelle -->
     <section class="hero">
-      <div class="wrap hero__in">
-        <div class="hero__texte">
-          <p class="surtitre">Packs graphiques · FiveM · GTA RP</p>
-          <h1>Change la ville.<br /><em>Impose ton style.</em></h1>
-          <p class="hero__sous">Des packs graphiques prêts à installer, et un créateur pour fabriquer le tien en direct : couleurs, contraste, netteté, vignette. Tu règles, tu vois, tu télécharges.</p>
-          <div class="hero__cta">
-            <a href="#createur" class="btn">Créer mon pack</a>
-            <a href="#packs" class="btn btn--ghost">Voir les packs</a>
-          </div>
-          <ul class="hero__stats">
-            <li><strong data-nb-packs>8</strong><span>packs</span></li>
-            <li><strong>13</strong><span>réglages</span></li>
-            <li><strong>0 €</strong><span>le créateur</span></li>
-          </ul>
+      <div class="frame" id="frame">
+        <header class="barre">
+          <a href="#top" class="logo" aria-label="Accueil">
+            <svg class="logo__mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M27 5C14 5 6 11 6 21c0 2 .4 3.7 1 5 2-6 7-11 13-13-5 3-9 8-10.5 14 1.5.6 3.2 1 5 1C25 28 28 18 27 5z"/></svg>
+            <span data-site-nom>Forge Pack</span>
+          </a>
+          <nav class="barre__nav" aria-label="Navigation">
+            <a href="#packs">Packs</a>
+            <a href="#createur">Créateur</a>
+            <a href="#installation">Installation</a>
+            <a href="#serveur">Serveur</a>
+            <a href="#faq">FAQ</a>
+          </nav>
+          <a class="pill pill--blanc barre__discord" data-discord target="_blank" rel="noopener">Discord</a>
+          <a class="pill pill--vert barre__creer" href="#createur">Créer</a>
+        </header>
+
+        <p class="badge">Packs graphiques pour FiveM &amp; GTA RP</p>
+        <h1 class="titre">
+          <span class="titre__l1">Change la ville,</span>
+          <span class="titre__l2">impose ton style</span>
+        </h1>
+        <p class="sous">Des packs graphiques prêts à installer et un créateur<br class="br-l" /> pour fabriquer le tien en direct. Tu règles les couleurs,<br class="br-l" /> tu vois le rendu, tu télécharges ton pack.</p>
+
+        <div class="rail" id="rail" aria-label="Packs à la une, glisser pour faire défiler"></div>
+
+        <div class="cta">
+          <a class="pill pill--vert pill--grand" href="#createur">Créer mon pack</a>
         </div>
-        <div class="hero__visuel">
-          <div class="comparer" data-comparer id="heroComparer">
-            <canvas class="comparer__apres" width="960" height="540"></canvas>
-            <canvas class="comparer__avant" width="960" height="540"></canvas>
-            <div class="comparer__poignee" aria-hidden="true"><span>⟷</span></div>
-            <span class="tag tag--g">Avant</span><span class="tag tag--d">Après</span>
-          </div>
-          <p class="hero__legende">Pack <strong id="heroNom">—</strong> · glisse pour comparer</p>
-        </div>
+
+        <svg class="doodles" viewBox="0 0 1440 1080" aria-hidden="true" preserveAspectRatio="none">
+          <path class="trait trait--slash" d="M263 407 L277 379" />
+          <path class="trait trait--slash" d="M281 407 L295 379" />
+          <path class="trait trait--vu" d="M1236 398 C1268 430 1270 470 1238 478 C1212 484 1206 456 1228 452 C1252 448 1240 492 1192 508" />
+          <path class="trait trait--vu" d="M1203 496 L1192 508 L1208 511" />
+          <path class="trait trait--gratuit" d="M566 922 C576 902 596 896 614 906" />
+          <path class="trait trait--gratuit" d="M601 898 L614 906 L602 916" />
+        </svg>
+        <p class="note note--vu">Glisse<br />les packs</p>
+        <p class="note note--gratuit">Gratuit</p>
       </div>
     </section>
-
-    <div class="bandeau" aria-hidden="true">
-      <div class="bandeau__piste">
-        <span>Preset ReShade</span><span>Ressource serveur</span><span>Aperçu en direct</span><span>Installation 2 min</span><span>Import de capture</span><span>Pack .zip</span>
-        <span>Preset ReShade</span><span>Ressource serveur</span><span>Aperçu en direct</span><span>Installation 2 min</span><span>Import de capture</span><span>Pack .zip</span>
-      </div>
-    </div>
 
     <!-- PACKS -->
     <section class="section" id="packs">
@@ -144,7 +137,7 @@
           <li><span>03</span><h3>Ajoute ton pack</h3><p>Copie le fichier <code>.ini</code> du dossier <code>plugins</code> de ton pack dans <code>FiveM.app/plugins</code>.</p></li>
           <li><span>04</span><h3>Active-le</h3><p>En jeu, appuie sur <kbd>Début</kbd> pour ouvrir ReShade et sélectionne ton preset. C'est fini.</p></li>
         </ol>
-        <div class="carte serveur-info">
+        <div class="carte serveur-info" id="serveur">
           <h3>Tu as un serveur ?</h3>
           <p>Active l'option « Ressource serveur » dans le créateur : le pack inclut une ressource FiveM qui applique un filtre à tous les joueurs. Glisse-la dans <code>resources</code>, ajoute <code>ensure nom_graphique</code> dans <code>server.cfg</code>, et les joueurs peuvent l'activer ou la couper avec <code>/pack</code>.</p>
         </div>
@@ -167,7 +160,7 @@
 
   <footer class="pied">
     <div class="wrap pied__in">
-      <a href="#top" class="logo"><span class="logo__mark">▲</span><span data-site-nom>FORGE PACK</span></a>
+      <a href="#top" class="logo"><svg class="logo__mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M27 5C14 5 6 11 6 21c0 2 .4 3.7 1 5 2-6 7-11 13-13-5 3-9 8-10.5 14 1.5.6 3.2 1 5 1C25 28 28 18 27 5z"/></svg><span data-site-nom>Forge Pack</span></a>
       <p>Packs graphiques pour FiveM. Projet non affilié à Rockstar Games, Take-Two ou Cfx.re.</p>
       <a class="btn btn--ghost btn--petit" data-discord target="_blank" rel="noopener">Rejoindre le Discord</a>
     </div>
@@ -210,5 +203,6 @@
   <script src="js/engine.js"></script>
   <script src="js/export.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/hero.js"></script>
 </body>
 </html>

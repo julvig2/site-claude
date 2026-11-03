@@ -4,7 +4,7 @@
    ========================================================================== */
 
 const SITE = {
-  nom: "FORGE PACK",
+  nom: "Forge Pack",
   slogan: "Packs graphiques FiveM",
   discord: "https://discord.gg/votre-serveur", // ← votre lien Discord
   devise: "€",

@@ -24,13 +24,6 @@
     toastTimer = setTimeout(() => t.classList.remove("visible"), 3200);
   }
 
-  /* ---------- Menu mobile ---------- */
-  $("#burger").addEventListener("click", (e) => {
-    const ouvert = document.body.classList.toggle("menu-ouvert");
-    e.currentTarget.setAttribute("aria-expanded", ouvert);
-  });
-  $$("#menu a").forEach((a) => a.addEventListener("click", () => document.body.classList.remove("menu-ouvert")));
-
   /* ---------- Comparateur avant / après ---------- */
   function initComparer(el) {
     const poser = (clientX) => {
@@ -55,24 +48,6 @@
       },
     };
   }
-
-  /* ---------- Hero ---------- */
-  const hero = initComparer($("#heroComparer"));
-  const vedette = PACKS.find((p) => p.badge === "Populaire") || PACKS[0];
-  $("#heroNom").textContent = vedette.nom;
-  hero.afficher(Scene.image(vedette.scene, W, H), vedette.reglages);
-  // petite animation d'intro de la poignée
-  (() => {
-    const el = $("#heroComparer");
-    const debut = performance.now();
-    const anim = (t) => {
-      const k = Math.min(1, (t - debut) / 1800);
-      if (el.dataset.drag) return;
-      el.style.setProperty("--pos", 50 + Math.sin(k * Math.PI * 2) * 22 * (1 - k) + "%");
-      if (k < 1) requestAnimationFrame(anim);
-    };
-    requestAnimationFrame(anim);
-  })();
 
   /* ---------- Boutique ---------- */
   const categories = ["Tous", ...new Set(PACKS.map((p) => p.categorie))];
@@ -412,11 +387,14 @@
 
   charger(PACKS[0].reglages, "Mon pack");
 
+  // Utilisé par le carrousel de l'accueil (js/hero.js)
+  window.ForgeUI = { ouvrirModale, toast };
+
   /* ---------- Captures GTA (js/data.js → CAPTURES) ---------- */
   Scene.charger(typeof CAPTURES === "undefined" ? {} : CAPTURES).then((chargees) => {
     if (!chargees.length) return;
-    hero.afficher(Scene.image(vedette.scene, W, H), vedette.reglages);
     dessinerVignettes();
+    document.dispatchEvent(new Event("captures-chargees"));
     if (modale.open && packModale) afficherModale(sceneModale);
     rendre();
   });
