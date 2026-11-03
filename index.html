@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Forge Pack — Packs graphiques FiveM</title>
+  <meta name="description" content="Packs graphiques FiveM prêts à installer et créateur de pack personnalisé : réglez les couleurs, voyez l'aperçu en direct et téléchargez votre preset ReShade." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+
+  <header class="nav">
+    <div class="wrap nav__in">
+      <a href="#top" class="logo"><span class="logo__mark">▲</span><span data-site-nom>FORGE PACK</span></a>
+      <nav class="nav__liens" id="menu">
+        <a href="#packs">Packs</a>
+        <a href="#createur">Créateur</a>
+        <a href="#installation">Installation</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <a class="btn btn--petit" data-discord target="_blank" rel="noopener">Discord</a>
+      <button class="nav__burger" id="burger" aria-label="Menu" aria-expanded="false"><span></span><span></span></button>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- HERO -->
+    <section class="hero">
+      <div class="wrap hero__in">
+        <div class="hero__texte">
+          <p class="surtitre">Packs graphiques · FiveM · GTA RP</p>
+          <h1>Change la ville.<br /><em>Impose ton style.</em></h1>
+          <p class="hero__sous">Des packs graphiques prêts à installer, et un créateur pour fabriquer le tien en direct : couleurs, contraste, netteté, vignette. Tu règles, tu vois, tu télécharges.</p>
+          <div class="hero__cta">
+            <a href="#createur" class="btn">Créer mon pack</a>
+            <a href="#packs" class="btn btn--ghost">Voir les packs</a>
+          </div>
+          <ul class="hero__stats">
+            <li><strong data-nb-packs>8</strong><span>packs</span></li>
+            <li><strong>13</strong><span>réglages</span></li>
+            <li><strong>0 €</strong><span>le créateur</span></li>
+          </ul>
+        </div>
+        <div class="hero__visuel">
+          <div class="comparer" data-comparer id="heroComparer">
+            <canvas class="comparer__apres" width="960" height="540"></canvas>
+            <canvas class="comparer__avant" width="960" height="540"></canvas>
+            <div class="comparer__poignee" aria-hidden="true"><span>⟷</span></div>
+            <span class="tag tag--g">Avant</span><span class="tag tag--d">Après</span>
+          </div>
+          <p class="hero__legende">Pack <strong id="heroNom">—</strong> · glisse pour comparer</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="bandeau" aria-hidden="true">
+      <div class="bandeau__piste">
+        <span>Preset ReShade</span><span>Ressource serveur</span><span>Aperçu en direct</span><span>Installation 2 min</span><span>Import de capture</span><span>Pack .zip</span>
+        <span>Preset ReShade</span><span>Ressource serveur</span><span>Aperçu en direct</span><span>Installation 2 min</span><span>Import de capture</span><span>Pack .zip</span>
+      </div>
+    </div>
+
+    <!-- PACKS -->
+    <section class="section" id="packs">
+      <div class="wrap">
+        <div class="section__tete">
+          <div>
+            <p class="surtitre">La boutique</p>
+            <h2>Les packs</h2>
+          </div>
+          <input type="search" class="recherche" id="recherche" placeholder="Rechercher un pack…" aria-label="Rechercher un pack" />
+        </div>
+        <div class="filtres" id="filtres" role="tablist"></div>
+        <div class="grille" id="grille"></div>
+        <p class="vide" id="vide" hidden>Aucun pack ne correspond.</p>
+      </div>
+    </section>
+
+    <!-- CRÉATEUR -->
+    <section class="section section--sombre" id="createur">
+      <div class="wrap">
+        <div class="section__tete">
+          <div>
+            <p class="surtitre">Créateur de pack</p>
+            <h2>Fabrique ton pack</h2>
+          </div>
+          <div class="createur__actions-tete">
+            <button class="btn btn--ghost btn--petit" id="btnAleatoire">🎲 Aléatoire</button>
+            <button class="btn btn--ghost btn--petit" id="btnReset">Réinitialiser</button>
+            <label class="btn btn--ghost btn--petit">Importer pack.json<input type="file" accept=".json,application/json" id="importJson" hidden /></label>
+          </div>
+        </div>
+
+        <div class="createur">
+          <div class="createur__apercu">
+            <div class="comparer" data-comparer id="creaComparer">
+              <canvas class="comparer__apres" width="960" height="540"></canvas>
+              <canvas class="comparer__avant" width="960" height="540"></canvas>
+              <div class="comparer__poignee" aria-hidden="true"><span>⟷</span></div>
+              <span class="tag tag--g">Avant</span><span class="tag tag--d">Après</span>
+            </div>
+            <div class="scenes" id="scenes">
+              <button data-scene="jour">☀ Jour</button>
+              <button data-scene="coucher" class="actif">◐ Coucher</button>
+              <button data-scene="nuit">☾ Nuit</button>
+              <label class="scenes__import">⬆ Ma capture<input type="file" accept="image/*" id="importImage" hidden /></label>
+            </div>
+            <p class="astuce">Astuce : importe une capture d'écran de ton serveur pour voir le pack sur ta vraie map. Double-clic sur un réglage pour le remettre à zéro.</p>
+
+            <div class="carte export">
+              <div class="champ">
+                <label for="nomPack">Nom du pack</label>
+                <input id="nomPack" maxlength="40" value="Mon pack" />
+              </div>
+              <div class="champ">
+                <label for="auteurPack">Auteur</label>
+                <input id="auteurPack" maxlength="40" placeholder="Ton pseudo" />
+              </div>
+              <button class="btn btn--plein" id="btnTelecharger">Télécharger le pack (.zip)</button>
+              <details class="code">
+                <summary>Voir le preset ReShade généré</summary>
+                <pre id="presetTexte"></pre>
+              </details>
+            </div>
+          </div>
+
+          <div class="createur__panneau" id="panneau"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- INSTALLATION -->
+    <section class="section" id="installation">
+      <div class="wrap">
+        <p class="surtitre">Installation</p>
+        <h2>En jeu en 4 étapes</h2>
+        <ol class="etapes">
+          <li><span>01</span><h3>Installe ReShade</h3><p>Télécharge ReShade sur reshade.me, sélectionne <code>FiveM_GTAProcess.exe</code>, choisis DirectX 10/11/12 et coche « Standard effects ».</p></li>
+          <li><span>02</span><h3>Place les fichiers</h3><p>Mets <code>dxgi.dll</code>, <code>ReShade.ini</code> et <code>reshade-shaders</code> dans <code>FiveM.app/plugins</code>.</p></li>
+          <li><span>03</span><h3>Ajoute ton pack</h3><p>Copie le fichier <code>.ini</code> du dossier <code>plugins</code> de ton pack dans <code>FiveM.app/plugins</code>.</p></li>
+          <li><span>04</span><h3>Active-le</h3><p>En jeu, appuie sur <kbd>Début</kbd> pour ouvrir ReShade et sélectionne ton preset. C'est fini.</p></li>
+        </ol>
+        <div class="carte serveur-info">
+          <h3>Tu as un serveur ?</h3>
+          <p>Active l'option « Ressource serveur » dans le créateur : le pack inclut une ressource FiveM qui applique un filtre à tous les joueurs. Glisse-la dans <code>resources</code>, ajoute <code>ensure nom_graphique</code> dans <code>server.cfg</code>, et les joueurs peuvent l'activer ou la couper avec <code>/pack</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section section--sombre" id="faq">
+      <div class="wrap wrap--etroit">
+        <p class="surtitre">FAQ</p>
+        <h2>Questions fréquentes</h2>
+        <details><summary>Est-ce que je risque un ban ?</summary><p>ReShade est un post-traitement de l'image autorisé par FiveM, placé dans le dossier <code>plugins</code>. Certains serveurs l'interdisent dans leur règlement : vérifie avant de jouer.</p></details>
+        <details><summary>Est-ce que ça fait baisser mes FPS ?</summary><p>Très peu. Le créateur n'ajoute dans le preset que les effets que tu utilises vraiment, et ce sont des effets légers. La netteté et la vignette sont les plus coûteux, et restent faibles.</p></details>
+        <details><summary>L'aperçu est-il identique au jeu ?</summary><p>L'aperçu applique les mêmes formules que les shaders ReShade exportés. Le rendu final dépend aussi de la météo et de l'heure en jeu : importe une capture de ton serveur pour un aperçu plus fidèle.</p></details>
+        <details><summary>Je peux modifier un pack acheté ?</summary><p>Oui. Chaque pack contient un <code>pack.json</code> : importe-le dans le créateur, ajuste ce que tu veux et télécharge ta version.</p></details>
+        <details><summary>Comment désinstaller ?</summary><p>Supprime <code>dxgi.dll</code> du dossier <code>FiveM.app/plugins</code>. Côté serveur, retire la ligne <code>ensure</code> de ton <code>server.cfg</code>.</p></details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="pied">
+    <div class="wrap pied__in">
+      <a href="#top" class="logo"><span class="logo__mark">▲</span><span data-site-nom>FORGE PACK</span></a>
+      <p>Packs graphiques pour FiveM. Projet non affilié à Rockstar Games, Take-Two ou Cfx.re.</p>
+      <a class="btn btn--ghost btn--petit" data-discord target="_blank" rel="noopener">Rejoindre le Discord</a>
+    </div>
+  </footer>
+
+  <!-- MODALE PACK -->
+  <dialog class="modale" id="modale">
+    <button class="modale__fermer" id="modaleFermer" aria-label="Fermer">✕</button>
+    <div class="modale__corps">
+      <div class="comparer" data-comparer id="modaleComparer">
+        <canvas class="comparer__apres" width="960" height="540"></canvas>
+        <canvas class="comparer__avant" width="960" height="540"></canvas>
+        <div class="comparer__poignee" aria-hidden="true"><span>⟷</span></div>
+        <span class="tag tag--g">Avant</span><span class="tag tag--d">Après</span>
+      </div>
+      <div class="modale__scenes scenes" id="modaleScenes">
+        <button data-scene="jour">☀ Jour</button>
+        <button data-scene="coucher">◐ Coucher</button>
+        <button data-scene="nuit">☾ Nuit</button>
+      </div>
+      <div class="modale__infos">
+        <div>
+          <p class="surtitre" id="modaleCat"></p>
+          <h3 id="modaleNom"></h3>
+          <p id="modaleDesc"></p>
+        </div>
+        <div class="modale__achat">
+          <strong class="prix" id="modalePrix"></strong>
+          <button class="btn" id="modaleAcheter"></button>
+          <button class="btn btn--ghost" id="modalePerso">Personnaliser</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/vendor/jszip.min.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/export.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
