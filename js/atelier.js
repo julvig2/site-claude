@@ -103,35 +103,32 @@ const Atelier = (() => {
 `;
   }
 
-  function lisezmoi(m, id, r) {
+  /** Lignes décrivant les réglages du mod (pour le LISEZMOI du pack). */
+  function resume(r) {
     const lignes = [];
     if (r.clarteActive) lignes.push(`Clarté de l'eau : ${Math.round(r.clarte)} (plus c'est bas, plus l'eau est claire)`);
     if (r.vaguesActives) lignes.push(`Vagues : ${Math.round(r.vagues * 100)} % de la hauteur d'origine`);
-    return `==============================================================
- ${m.nom.toUpperCase()}
- Mod FiveM — par ${m.auteur}
- Généré avec ${SITE.nom}
-==============================================================
+    return lignes;
+  }
 
- ${lignes.join("\n ")}
+  /** Vrai si un water.xml est chargé et qu'au moins un réglage est actif. */
+  function actif() {
+    const r = lireReglages();
+    return Boolean(source) && (r.clarteActive || r.vaguesActives);
+  }
 
---------------------------------------------------------------
- INSTALLATION
---------------------------------------------------------------
- 1) Copiez "mods/${id}.rpf" dans le dossier "FiveM.app/mods"
-    (créez le dossier "mods" s'il n'existe pas).
- 2) Relancez FiveM.
-
- Pour désinstaller : supprimez "${id}.rpf" du dossier mods.
-
---------------------------------------------------------------
- À SAVOIR
---------------------------------------------------------------
- - Les serveurs en « pure mode » refusent les mods du dossier mods.
- - Vérifiez le règlement du serveur : certains interdisent les mods
-   qui changent l'eau ou la visibilité.
- - Ce mod a été fabriqué à partir de VOTRE fichier water.xml.
-`;
+  /**
+   * Construit le mod .rpf à joindre au pack réaliste.
+   * @returns {Promise<{ rpf: Uint8Array, resume: string[] } | null>}
+   */
+  async function construireMod(nom, auteur) {
+    if (!actif()) return null;
+    const r = lireReglages();
+    const rpf = await Rpf.creer({
+      "assembly.xml": assembly({ nom, auteur, description: `Généré avec ${SITE.nom}` }),
+      content: { levels: { "water.xml": modifier(source, r) } },
+    });
+    return { rpf, resume: resume(r) };
   }
 
   /* ---------- Interface ---------- */
@@ -154,7 +151,15 @@ const Atelier = (() => {
       i.closest(".reglage").classList.toggle("desactive", !actif || !source);
       i.style.setProperty("--p", ((i.value - i.min) / (i.max - i.min)) * 100 + "%");
     });
-    $("#atCreer").disabled = !source || (!r.clarteActive && !r.vaguesActives);
+    const etat = $("#atEtat");
+    if (etat) {
+      etat.textContent = !source
+        ? "Aucun fichier : le pack sera créé sans mod."
+        : actif()
+          ? "Le mod .rpf sera ajouté au pack (dossier mods)."
+          : "Active au moins un réglage pour ajouter le mod au pack.";
+      etat.classList.toggle("mods__etat--actif", actif());
+    }
     // illustration : plus la valeur est basse, plus on voit le fond
     const transparence = 1 - Math.min(1, Math.max(0, (r.clarteActive ? r.clarte : infos && infos.clarte ? infos.clarte.moy : 20) / 30));
     $("#atEau").style.setProperty("--fond", transparence.toFixed(2));
@@ -193,47 +198,19 @@ const Atelier = (() => {
     }
   }
 
-  async function creer() {
-    const r = lireReglages();
-    const nom = $("#atNom").value.trim() || "Eau claire";
-    const auteur = $("#atAuteur").value.trim() || "Anonyme";
-    const id = Exporteur.slug(nom);
-    const btn = $("#atCreer");
-    btn.disabled = true;
-    try {
-      const xml = modifier(source, r);
-      const rpf = await Rpf.creer({
-        "assembly.xml": assembly({ nom, auteur, description: `Généré avec ${SITE.nom}` }),
-        content: { levels: { "water.xml": xml } },
-      });
-      const zip = new JSZip();
-      const racine = zip.folder(id);
-      racine.folder("mods").file(`${id}.rpf`, rpf);
-      racine.file("LISEZMOI.txt", lisezmoi({ nom, auteur }, id, r));
-      const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
-      await Exporteur.sauvegarder(blob, `${id}_mod.zip`);
-      toast(`${id}_mod.zip téléchargé ✔ (le .rpf est dans le dossier mods)`);
-    } catch (e) {
-      toast("Erreur : " + e.message);
-    } finally {
-      majSorties();
-    }
-  }
-
   function init() {
-    if (!$("#panneauAtelier")) return;
+    if (!$("#groupeMods")) return;
     const depot = $("#atDepot");
     $("#atImport").addEventListener("change", (e) => { chargerFichier(e.target.files[0]); e.target.value = ""; });
     ["dragenter", "dragover"].forEach((t) => depot.addEventListener(t, (e) => { e.preventDefault(); depot.classList.add("survol"); }));
     ["dragleave", "drop"].forEach((t) => depot.addEventListener(t, () => depot.classList.remove("survol")));
     depot.addEventListener("drop", (e) => { e.preventDefault(); chargerFichier(e.dataTransfer.files[0]); });
     ["#atClarte", "#atVagues", "#atClarteActive", "#atVaguesActives"].forEach((s) => $(s).addEventListener("input", majSorties));
-    $("#atCreer").addEventListener("click", creer);
     majSorties();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 
-  return { analyser, modifier };
+  return { analyser, modifier, actif, construireMod };
 })();

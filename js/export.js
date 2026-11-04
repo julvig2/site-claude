@@ -286,7 +286,27 @@ ${serveur}
     const zip = new JSZip();
     const racine = zip.folder(id);
 
-    racine.file("LISEZMOI.txt", lisezmoi({ nom, auteur }, s, id));
+    let texte = lisezmoi({ nom, auteur }, s, id);
+    if (meta.mod) {
+      // Mod du jeu (.rpf pour le dossier mods de FiveM)
+      racine.folder("mods").file(`${id}.rpf`, meta.mod.rpf);
+      texte += `
+--------------------------------------------------------------
+ MOD DU JEU : dossier mods
+--------------------------------------------------------------
+ ${meta.mod.resume.join("\n ")}
+
+ 1) Copiez "mods/${id}.rpf" dans le dossier "FiveM.app/mods"
+    (créez le dossier "mods" s'il n'existe pas).
+ 2) Relancez FiveM.
+ Pour le retirer : supprimez "${id}.rpf" du dossier mods.
+
+ Les serveurs en « pure mode » refusent les mods du dossier mods,
+ et certains règlements les interdisent : vérifiez avant de jouer.
+ Ce mod a été fabriqué à partir de VOTRE fichier water.xml.
+`;
+    }
+    racine.file("LISEZMOI.txt", texte);
     racine.file("pack.json", JSON.stringify({ format: "forgepack", version: 2, mode: meta.mode || "realiste", nom, auteur, reglages: s }, null, 2));
     racine.folder("plugins").file(`${id}.ini`, presetReShade(s));
 

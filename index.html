@@ -91,7 +91,6 @@
         <div class="onglets onglets--crea" id="ongletsCrea" role="tablist" aria-label="Créer">
           <button class="actif" data-onglet="graphique" role="tab" aria-selected="true">Pack graphique</button>
           <button data-onglet="son" role="tab" aria-selected="false">Pack son</button>
-          <button data-onglet="atelier" role="tab" aria-selected="false">Atelier mods</button>
         </div>
 
         <div id="panneauGraphique">
@@ -159,7 +158,43 @@
             </div>
           </div>
 
-          <div class="createur__panneau" id="panneau"></div>
+          <div class="createur__colonne">
+            <div class="createur__panneau" id="panneau"></div>
+
+            <!-- MODS DU JEU (pack réaliste) -->
+            <fieldset class="carte groupe mods" id="groupeMods" hidden>
+              <legend>Mods du jeu <span class="mods__badge">dossier mods</span></legend>
+              <p class="astuce groupe__note">Change l'eau du jeu avec un vrai mod <code>.rpf</code>, ajouté à ton pack. Fait à partir de <b>ton</b> fichier <code>water.xml</code> : le site ne fournit aucun fichier de Rockstar.</p>
+              <label class="depot depot--petit" id="atDepot">
+                <input type="file" accept=".xml,text/xml" id="atImport" hidden />
+                <strong>Dépose ton water.xml</strong>
+                <span id="atFichier">ou clique pour choisir le fichier</span>
+              </label>
+              <p class="astuce" id="atInfos"></p>
+              <details class="guide">
+                <summary>Où trouver ce fichier ? (2 minutes avec CodeWalker)</summary>
+                <ol>
+                  <li>Télécharge CodeWalker (gratuit) et ouvre son <b>RPF Explorer</b>. Il trouve tout seul ton dossier GTA V.</li>
+                  <li>Va dans <code>common.rpf</code> › <code>data</code> › <code>levels</code> › <code>gta5</code>.</li>
+                  <li>Clic droit sur <code>water.xml</code> › <b>Extract</b>, et enregistre-le sur ton bureau.</li>
+                  <li>Dépose ce fichier ici.</li>
+                </ol>
+              </details>
+              <div class="eau" id="atEau" aria-hidden="true"><span class="eau__fond"></span><span class="eau__surface"></span></div>
+              <label class="interrupteur"><input type="checkbox" id="atClarteActive" checked /><span></span><b>Changer la clarté de l'eau</b></label>
+              <div class="reglage">
+                <div class="reglage__tete"><label for="atClarte">Clarté (plus bas = eau plus claire)</label><output id="atClarteOut"></output></div>
+                <input type="range" id="atClarte" min="2" max="30" step="1" value="10" />
+              </div>
+              <label class="interrupteur"><input type="checkbox" id="atVaguesActives" /><span></span><b>Changer la hauteur des vagues</b></label>
+              <div class="reglage">
+                <div class="reglage__tete"><label for="atVagues">Hauteur des vagues</label><output id="atVaguesOut"></output></div>
+                <input type="range" id="atVagues" min="0" max="1.5" step="0.05" value="0.5" />
+              </div>
+              <p class="mods__etat" id="atEtat"></p>
+              <p class="astuce atelier__alerte">L'eau n'apparaît pas dans l'aperçu. Les serveurs en « pure mode » refusent les mods du dossier mods, et certains règlements les interdisent.</p>
+            </fieldset>
+          </div>
         </div>
         </div>
 
@@ -237,66 +272,6 @@
               </div>
               <button class="btn btn--plein" id="btnCreerSon" type="button">4. Créer le pack son</button>
               <p class="astuce">Le pack contient le son en WAV et une ressource FiveM qui le joue à chaque tir, pour toi et les joueurs proches.</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- ATELIER MODS -->
-        <div class="son atelier" id="panneauAtelier" hidden>
-          <div class="son__principal">
-            <div class="carte son__bloc">
-              <h3>1. Dépose ton fichier water.xml</h3>
-              <label class="depot" id="atDepot">
-                <input type="file" accept=".xml,text/xml" id="atImport" hidden />
-                <strong>Dépose ton water.xml ici</strong>
-                <span id="atFichier">ou clique pour choisir le fichier</span>
-              </label>
-              <p class="astuce" id="atInfos"></p>
-              <details class="guide">
-                <summary>Où trouver ce fichier ? (2 minutes avec CodeWalker)</summary>
-                <ol>
-                  <li>Télécharge CodeWalker (gratuit) et ouvre son <b>RPF Explorer</b>. Il trouve tout seul ton dossier GTA V.</li>
-                  <li>Va dans <code>common.rpf</code> › <code>data</code> › <code>levels</code> › <code>gta5</code>.</li>
-                  <li>Clic droit sur <code>water.xml</code> › <b>Extract</b>, et enregistre-le sur ton bureau.</li>
-                  <li>Dépose ce fichier ici. Il vient de ton propre jeu : le site ne fournit aucun fichier de Rockstar, il change seulement des valeurs.</li>
-                </ol>
-              </details>
-            </div>
-
-            <div class="carte son__bloc">
-              <h3>2. Règle l'eau</h3>
-              <div class="eau" id="atEau" aria-hidden="true"><span class="eau__fond"></span><span class="eau__surface"></span></div>
-              <p class="astuce">Illustration seulement : le rendu exact dépend du jeu.</p>
-              <label class="interrupteur"><input type="checkbox" id="atClarteActive" checked /><span></span><b>Changer la clarté de l'eau</b></label>
-              <div class="reglage">
-                <div class="reglage__tete"><label for="atClarte">Clarté (plus bas = eau plus claire)</label><output id="atClarteOut"></output></div>
-                <input type="range" id="atClarte" min="2" max="30" step="1" value="10" />
-              </div>
-              <label class="interrupteur"><input type="checkbox" id="atVaguesActives" /><span></span><b>Changer la hauteur des vagues</b></label>
-              <div class="reglage">
-                <div class="reglage__tete"><label for="atVagues">Hauteur des vagues</label><output id="atVaguesOut"></output></div>
-                <input type="range" id="atVagues" min="0" max="1.5" step="0.05" value="0.5" />
-              </div>
-            </div>
-          </div>
-
-          <div class="son__cote">
-            <div class="carte export export--son">
-              <div class="champ">
-                <label for="atNom">Nom du mod</label>
-                <input id="atNom" maxlength="40" value="Eau claire" />
-              </div>
-              <div class="champ">
-                <label for="atAuteur">Auteur</label>
-                <input id="atAuteur" maxlength="40" placeholder="Ton pseudo" />
-              </div>
-              <button class="btn btn--plein" id="atCreer" type="button">3. Créer le mod (.rpf)</button>
-              <p class="astuce">Tu reçois un .zip avec le fichier <code>.rpf</code> à mettre dans <code>FiveM.app/mods</code>, au même format que les mods FiveM du dossier mods.</p>
-              <p class="astuce atelier__alerte">Les serveurs en « pure mode » refusent les mods du dossier mods, et certains règlements les interdisent. Vérifie avant de jouer.</p>
-            </div>
-            <div class="carte">
-              <h3 class="atelier__bientot-titre">Bientôt dans l'atelier</h3>
-              <p class="astuce">Ciel, lumière, brouillard et nuit (timecycle), puis l'ajout de tes propres textures et sons.</p>
             </div>
           </div>
         </div>

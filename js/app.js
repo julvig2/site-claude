@@ -449,6 +449,8 @@
       b.setAttribute("aria-selected", actif);
     });
     $("#nomPack").value = noms[mode];
+    const mods = $("#groupeMods");
+    if (mods) mods.hidden = mode !== "realiste";
     construirePanneau();
     synchroniser();
     rendre();
@@ -571,6 +573,10 @@
         scene,
         mode,
       };
+      // Pack réaliste : le mod .rpf (eau) est ajouté au pack s'il est réglé
+      if (mode === "realiste" && typeof Atelier !== "undefined" && Atelier.actif()) {
+        meta.mod = await Atelier.construireMod(meta.nom, meta.auteur);
+      }
       const f = await Exporteur.telecharger(reglages(), meta);
       let msg = `${f} téléchargé ✔`;
       if ($("#publierPack").checked && typeof Communaute !== "undefined") {
@@ -598,8 +604,6 @@
     });
     $("#panneauGraphique").hidden = o !== "graphique";
     $("#panneauSon").hidden = o !== "son";
-    const atelier = $("#panneauAtelier");
-    if (atelier) atelier.hidden = o !== "atelier";
     $(".createur__actions-tete").hidden = o !== "graphique";
   }
   $$("#ongletsCrea button").forEach((b) => b.addEventListener("click", () => choisirOnglet(b.dataset.onglet)));

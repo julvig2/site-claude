@@ -984,3 +984,12 @@ select:focus, .champ input:focus { outline: none; border-color: var(--vert); }
 }
 .atelier__alerte { padding: 8px 12px; border-radius: 10px; background: #fff4d6; color: #7a5600; }
 .atelier__bientot-titre { font-size: 1.05rem; letter-spacing: -0.02em; margin-bottom: 6px; }
+
+/* ---------- Mods du jeu (pack réaliste) ---------- */
+.createur__colonne { display: grid; gap: 14px; min-width: 0; }
+.mods { border: 1.5px solid var(--vert); }
+.mods__badge { margin-left: 6px; padding: 2px 8px; border-radius: 999px; background: var(--menthe); color: var(--vert); font: 600 0.72rem/1.4 var(--corps); letter-spacing: 0; vertical-align: middle; }
+.depot--petit { padding: 18px 14px; }
+.mods .eau { height: 80px; }
+.mods__etat { margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--fond); color: var(--texte-2); font-size: 0.85rem; }
+.mods__etat--actif { background: var(--menthe); color: var(--vert); font-weight: 600; }
