@@ -15,6 +15,7 @@ const Atelier = (() => {
 
   let source = null;   // texte du water.xml d'origine
   let infos = null;    // statistiques lues dans le fichier
+  let modSite = null;  // mod choisi dans la liste « Mods du site » (sinon : fichier du joueur)
 
   /* ---------- Lecture du water.xml ---------- */
   function section(texte, balise) {
@@ -111,18 +112,25 @@ const Atelier = (() => {
     return lignes;
   }
 
-  /** Vrai si un water.xml est chargé et qu'au moins un réglage est actif. */
+  /** Vrai si un mod du site est choisi, ou si un water.xml est chargé avec au moins un réglage actif. */
   function actif() {
+    if (modSite) return true;
     const r = lireReglages();
     return Boolean(source) && (r.clarteActive || r.vaguesActives);
   }
 
   /**
-   * Construit le mod .rpf à joindre au pack réaliste.
+   * Construit (ou récupère) le mod .rpf à joindre au pack réaliste.
    * @returns {Promise<{ rpf: Uint8Array, resume: string[] } | null>}
    */
   async function construireMod(nom, auteur) {
     if (!actif()) return null;
+    if (modSite) {
+      return {
+        rpf: await Communaute.chargerMod(modSite),
+        resume: [`Mod « ${modSite.nom} » par ${modSite.auteur}`, ...modSite.resume],
+      };
+    }
     const r = lireReglages();
     const rpf = await Rpf.creer({
       "assembly.xml": assembly({ nom, auteur, description: `Généré avec ${SITE.nom}` }),
@@ -152,7 +160,10 @@ const Atelier = (() => {
       i.style.setProperty("--p", ((i.value - i.min) / (i.max - i.min)) * 100 + "%");
     });
     const etat = $("#atEtat");
-    if (etat) {
+    if (etat && modSite) {
+      etat.textContent = `Le mod « ${modSite.nom} » sera ajouté au pack (dossier mods).`;
+      etat.classList.add("mods__etat--actif");
+    } else if (etat) {
       etat.textContent = !source
         ? "Aucun fichier : le pack sera créé sans mod."
         : actif()
@@ -198,8 +209,47 @@ const Atelier = (() => {
     }
   }
 
+  /* ---------- Liste déroulante : mon fichier ou un mod du site ---------- */
+  function remplirListe() {
+    const liste = $("#atSource");
+    if (!liste) return;
+    const mods = typeof Communaute !== "undefined" ? Communaute.modsDisponibles() : [];
+    const choix = liste.value;
+    liste.textContent = "";
+    liste.add(new Option("Mon fichier water.xml (à déposer)", ""));
+    if (mods.length) {
+      const groupe = document.createElement("optgroup");
+      groupe.label = `Mods du site (${mods.length})`;
+      mods.forEach((m) => {
+        const details = m.resume.map((l) => l.replace(/ \(.*\)$/, "")).join(", ");
+        groupe.appendChild(new Option(`${m.nom} — par ${m.auteur}${details ? " · " + details : ""}`, m.id));
+      });
+      liste.appendChild(groupe);
+    } else {
+      const vide = new Option("Aucun mod publié sur le site pour l'instant", "-");
+      vide.disabled = true;
+      liste.add(vide);
+    }
+    // garde le choix s'il existe toujours
+    liste.value = [...liste.options].some((o) => o.value === choix) ? choix : "";
+    choisir(liste.value);
+  }
+
+  function choisir(id) {
+    const mods = typeof Communaute !== "undefined" ? Communaute.modsDisponibles() : [];
+    modSite = mods.find((m) => m.id === id) || null;
+    $("#atPerso").hidden = Boolean(modSite);
+    const resume = $("#atResumeSite");
+    resume.hidden = !modSite;
+    if (modSite) resume.textContent = `${modSite.nom}, par ${modSite.auteur}. ${modSite.resume.join(" · ")}`;
+    majSorties();
+  }
+
   function init() {
     if (!$("#groupeMods")) return;
+    $("#atSource").addEventListener("change", (e) => choisir(e.target.value));
+    document.addEventListener("mods-maj", remplirListe);
+    remplirListe();
     const depot = $("#atDepot");
     $("#atImport").addEventListener("change", (e) => { chargerFichier(e.target.files[0]); e.target.value = ""; });
     ["dragenter", "dragover"].forEach((t) => depot.addEventListener(t, (e) => { e.preventDefault(); depot.classList.add("survol"); }));
@@ -212,5 +262,6 @@ const Atelier = (() => {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 
-  return { analyser, modifier, actif, construireMod };
+  // estPerso : le mod vient du fichier du joueur (et non d'un mod d'un autre membre)
+  return { analyser, modifier, actif, construireMod, estPerso: () => !modSite };
 })();

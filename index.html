@@ -164,7 +164,13 @@
             <!-- MODS DU JEU (pack réaliste) -->
             <fieldset class="carte groupe mods" id="groupeMods" hidden>
               <legend>Mods du jeu <span class="mods__badge">dossier mods</span></legend>
-              <p class="astuce groupe__note">Change l'eau du jeu avec un vrai mod <code>.rpf</code>, ajouté à ton pack. Fait à partir de <b>ton</b> fichier <code>water.xml</code> : le site ne fournit aucun fichier de Rockstar.</p>
+              <p class="astuce groupe__note">Change l'eau du jeu avec un vrai mod <code>.rpf</code>, ajouté à ton pack. Choisis un mod déjà publié sur le site, ou fabrique le tien à partir de ton fichier <code>water.xml</code>.</p>
+              <div class="reglage">
+                <label for="atSource">Mod à ajouter</label>
+                <select id="atSource"></select>
+              </div>
+              <p class="mods__resume" id="atResumeSite" hidden></p>
+              <div class="mods__perso" id="atPerso">
               <label class="depot depot--petit" id="atDepot">
                 <input type="file" accept=".xml,text/xml" id="atImport" hidden />
                 <strong>Dépose ton water.xml</strong>
@@ -190,6 +196,7 @@
               <div class="reglage">
                 <div class="reglage__tete"><label for="atVagues">Hauteur des vagues</label><output id="atVaguesOut"></output></div>
                 <input type="range" id="atVagues" min="0" max="1.5" step="0.05" value="0.5" />
+              </div>
               </div>
               <p class="mods__etat" id="atEtat"></p>
               <p class="astuce atelier__alerte">L'eau n'apparaît pas dans l'aperçu. Les serveurs en « pure mode » refusent les mods du dossier mods, et certains règlements les interdisent.</p>

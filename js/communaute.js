@@ -277,8 +277,8 @@ const Communaute = (() => {
     return { prix, lien };
   }
 
-  /** Publie un pack. pack.prix / pack.lien viennent de lireVente(). */
-  async function publier(pack, sonBase64) {
+  /** Publie un pack. pack.prix / pack.lien viennent de lireVente(). modBase64 = mod .rpf éventuel. */
+  async function publier(pack, sonBase64, modBase64) {
     if (partage) {
       if (!peutEcrire()) return false;
       if (Object.keys(monMembre().packs).length >= MAX_PACKS) {
@@ -288,6 +288,7 @@ const Communaute = (() => {
       try {
         const id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         if (sonBase64) await db.doc(`fichiers/${uid}/sons/${id}`).set({ wav: sonBase64 });
+        if (modBase64) await db.doc(`fichiers/${uid}/mods/${id}`).set({ rpf: modBase64 });
         await ecrireMembre((m) => {
           if (pack.auteur) m.pseudo = pack.auteur;
           m.packs[id] = copie({ ...pack, id, creeLe: Date.now() });
@@ -301,7 +302,7 @@ const Communaute = (() => {
         return false;
       }
     }
-    packsLocaux.unshift({ ...copie(pack), id: "l" + Date.now().toString(36), creeLe: Date.now(), telechargements: 0, sonBase64: sonBase64 || undefined });
+    packsLocaux.unshift({ ...copie(pack), id: "l" + Date.now().toString(36), creeLe: Date.now(), telechargements: 0, sonBase64: sonBase64 || undefined, modBase64: modBase64 || undefined });
     if (!ecrireLocal(CLE_LOCALE, packsLocaux)) {
       packsLocaux.shift();
       toast("Le navigateur n'a plus de place pour garder ce pack.");
@@ -315,6 +316,36 @@ const Communaute = (() => {
     if (!partage) return p.sonBase64;
     const s = await db.doc(`fichiers/${p.vendeurId}/sons/${p.id}`).get();
     return s.exists ? s.data().wav : null;
+  }
+
+  /* ---------- Mods du jeu publiés avec les packs réalistes ---------- */
+  /** Mods que ce visiteur peut utiliser : packs gratuits, achetés ou à lui. */
+  function modsDisponibles() {
+    return tousLesPacks()
+      .filter((p) => p.mod && ["libre", "achete"].includes(etatAchat(p)))
+      .map((p) => ({ id: p.id, vendeurId: p.vendeurId, nom: p.nom, auteur: p.auteur || "Anonyme", resume: p.mod.resume || [] }));
+  }
+
+  /** Récupère le .rpf d'un mod publié. */
+  async function chargerMod(m) {
+    let b64 = null;
+    if (partage) {
+      const s = await db.doc(`fichiers/${m.vendeurId}/mods/${m.id}`).get();
+      b64 = s.exists ? s.data().rpf : null;
+    } else {
+      const p = packsLocaux.find((x) => x.id === m.id);
+      b64 = p && p.modBase64;
+    }
+    if (!b64) throw new Error("mod introuvable");
+    return SonPack.depuisBase64(b64);
+  }
+
+  let signatureMods = "";
+  function signalerMods() {
+    const sig = modsDisponibles().map((m) => m.id).join(",");
+    if (sig === signatureMods) return;
+    signatureMods = sig;
+    document.dispatchEvent(new Event("mods-maj"));
   }
 
   async function noterTelechargement(p) {
@@ -379,6 +410,7 @@ const Communaute = (() => {
           await db.doc("membres/" + p.vendeurId).set(autre);
         }
         if (p.type === "son") await db.doc(`fichiers/${p.vendeurId}/sons/${p.id}`).delete().catch(() => {});
+        if (p.mod) await db.doc(`fichiers/${p.vendeurId}/mods/${p.id}`).delete().catch(() => {});
         afficher();
       } catch (e) { toast("Suppression impossible pour le moment."); }
       return;
@@ -431,7 +463,9 @@ const Communaute = (() => {
         if (!b64) throw new Error("son introuvable");
         await SonPack.telecharger({ ...p.son, nom: p.nom, auteur: p.auteur, wav: SonPack.depuisBase64(b64) });
       } else {
-        await Exporteur.telecharger(p.reglages, { nom: p.nom, auteur: p.auteur, scene: p.scene, mode: p.mode });
+        const meta = { nom: p.nom, auteur: p.auteur, scene: p.scene, mode: p.mode };
+        if (p.mod) meta.mod = { rpf: await chargerMod({ id: p.id, vendeurId: p.vendeurId }), resume: p.mod.resume || [] };
+        await Exporteur.telecharger(p.reglages, meta);
       }
       await noterTelechargement(p);
       toast(`« ${p.nom} » téléchargé ✔`);
@@ -685,6 +719,7 @@ const Communaute = (() => {
   function afficher() {
     const grille = $("#commuGrille");
     if (!grille) return;
+    signalerMods();
     if (saisieEnCours()) { rendreEnAttente = true; return; }
     rendreEnAttente = false;
     afficherCommission();
@@ -804,5 +839,5 @@ const Communaute = (() => {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", demarrer);
   else demarrer();
 
-  return { publier, lireVente };
+  return { publier, lireVente, modsDisponibles, chargerMod };
 })();

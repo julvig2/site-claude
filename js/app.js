@@ -580,7 +580,13 @@
       const f = await Exporteur.telecharger(reglages(), meta);
       let msg = `${f} téléchargé ✔`;
       if ($("#publierPack").checked && typeof Communaute !== "undefined") {
-        const ok = await Communaute.publier({ type: "graphique", mode, nom: meta.nom, auteur: meta.auteur, scene, reglages: copie(reglages()), prix: vente.prix, lien: vente.lien });
+        // Le mod n'est publié avec le pack que s'il vient du fichier du joueur (pas le mod d'un autre membre)
+        const modPerso = meta.mod && typeof Atelier !== "undefined" && Atelier.estPerso() ? meta.mod : null;
+        const ok = await Communaute.publier(
+          { type: "graphique", mode, nom: meta.nom, auteur: meta.auteur, scene, reglages: copie(reglages()), prix: vente.prix, lien: vente.lien, mod: modPerso ? { type: "eau", resume: modPerso.resume } : undefined },
+          null,
+          modPerso ? SonPack.versBase64(modPerso.rpf) : null
+        );
         if (ok) msg += vente.prix ? ` · en vente à ${vente.prix.toFixed(2).replace(".", ",")} €` : " · publié dans les derniers packs";
       }
       toast(msg);

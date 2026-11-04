@@ -993,3 +993,6 @@ select:focus, .champ input:focus { outline: none; border-color: var(--vert); }
 .mods .eau { height: 80px; }
 .mods__etat { margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--fond); color: var(--texte-2); font-size: 0.85rem; }
 .mods__etat--actif { background: var(--menthe); color: var(--vert); font-weight: 600; }
+.mods__perso { display: grid; gap: 14px; }
+.mods__resume { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--menthe); color: var(--vert); font-size: 0.88rem; font-weight: 500; }
+#atSource { font-size: 0.92rem; }
