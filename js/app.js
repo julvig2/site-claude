@@ -451,6 +451,8 @@
     $("#nomPack").value = noms[mode];
     const mods = $("#groupeMods");
     if (mods) mods.hidden = mode !== "realiste";
+    // Le pack CVC se présente sur la capture de jour (images/jour.jpg)
+    if (mode === "cvc" && !imagePerso) choisirScene("jour", false);
     construirePanneau();
     synchroniser();
     rendre();
