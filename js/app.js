@@ -598,6 +598,8 @@
     });
     $("#panneauGraphique").hidden = o !== "graphique";
     $("#panneauSon").hidden = o !== "son";
+    const atelier = $("#panneauAtelier");
+    if (atelier) atelier.hidden = o !== "atelier";
     $(".createur__actions-tete").hidden = o !== "graphique";
   }
   $$("#ongletsCrea button").forEach((b) => b.addEventListener("click", () => choisirOnglet(b.dataset.onglet)));

@@ -942,3 +942,45 @@ select:focus, .champ input:focus { outline: none; border-color: var(--vert); }
   .admin__form { grid-template-columns: 1fr; }
 }
 .commission > *, .admin > *, #adminVendeurs { min-width: 0; }
+
+/* ---------- Atelier mods ---------- */
+.depot.charge { border-style: solid; border-color: var(--vert); background: var(--menthe); }
+.guide summary { cursor: pointer; color: var(--vert); font-weight: 600; font-size: 0.9rem; }
+.guide ol { margin: 10px 0 0; padding-left: 20px; display: grid; gap: 6px; color: var(--texte-2); font-size: 0.9rem; }
+.eau {
+  --fond: 0.5;
+  --vagues: 1;
+  position: relative;
+  height: 120px;
+  max-width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  background: linear-gradient(#e9d9a8, #d8c385);
+}
+.eau__fond {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 70%, #c9a86a 0 10px, transparent 11px),
+    radial-gradient(circle at 55% 80%, #b98f55 0 14px, transparent 15px),
+    radial-gradient(circle at 80% 65%, #d1b277 0 8px, transparent 9px),
+    repeating-linear-gradient(100deg, transparent 0 18px, rgba(0, 0, 0, 0.05) 18px 20px);
+}
+.eau__surface {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(#2a8fb8, #0d4e6e);
+  opacity: calc(1 - var(--fond) * 0.85);
+  transition: opacity 0.2s;
+}
+.eau__surface::before {
+  content: "";
+  position: absolute;
+  left: -10%;
+  right: -10%;
+  top: 0;
+  height: calc(6px + var(--vagues) * 10px);
+  background: radial-gradient(ellipse at 50% 0, rgba(255, 255, 255, 0.55), transparent 70%) 0 0 / 60px 100% repeat-x;
+}
+.atelier__alerte { padding: 8px 12px; border-radius: 10px; background: #fff4d6; color: #7a5600; }
+.atelier__bientot-titre { font-size: 1.05rem; letter-spacing: -0.02em; margin-bottom: 6px; }
