@@ -164,12 +164,18 @@
             <!-- MODS DU JEU (pack réaliste) -->
             <fieldset class="carte groupe mods" id="groupeMods" hidden>
               <legend>Mods du jeu <span class="mods__badge">dossier mods</span></legend>
-              <p class="astuce groupe__note">Change l'eau du jeu avec un vrai mod <code>.rpf</code>, ajouté à ton pack. Choisis un mod déjà publié sur le site, ou fabrique le tien à partir de ton fichier <code>water.xml</code>.</p>
+              <p class="astuce groupe__note">Ajoute de vrais mods <code>.rpf</code> à ton pack : choisis-en autant que tu veux parmi ceux du site, ou fabrique ton propre mod d'eau.</p>
               <div class="reglage">
-                <label for="atSource">Mod à ajouter</label>
-                <select id="atSource"></select>
+                <label for="atSource">Mods du site</label>
+                <div class="mods__ajout">
+                  <select id="atSource"></select>
+                  <button class="btn btn--petit" id="atAjouter" type="button">Ajouter</button>
+                </div>
               </div>
-              <p class="mods__resume" id="atResumeSite" hidden></p>
+              <ul class="mods__choisis" id="atChoisis" aria-label="Mods ajoutés au pack"></ul>
+              <p class="mods__alerte" id="atConflits" hidden></p>
+              <details class="mods__section">
+                <summary>Fabriquer ton propre mod d'eau (water.xml)</summary>
               <div class="mods__perso" id="atPerso">
               <label class="depot depot--petit" id="atDepot">
                 <input type="file" accept=".xml,text/xml" id="atImport" hidden />
@@ -198,8 +204,42 @@
                 <input type="range" id="atVagues" min="0" max="1.5" step="0.05" value="0.5" />
               </div>
               </div>
+              </details>
+
+              <details class="mods__section" id="envoiMod">
+                <summary>Ajouter un mod au site</summary>
+                <form class="envoi-mod" id="formMod" hidden>
+                  <label class="depot depot--petit" id="modDepot">
+                    <input type="file" accept=".rpf" id="modFichier" hidden />
+                    <strong>Choisis le fichier .rpf</strong>
+                    <span id="modFichierNom">15 Mo maximum</span>
+                  </label>
+                  <p class="astuce" id="modDetection"></p>
+                  <div class="champ">
+                    <label for="modNom">Nom du mod</label>
+                    <input id="modNom" maxlength="60" />
+                  </div>
+                  <div class="champ">
+                    <label for="modCreateur">Créateur du mod</label>
+                    <input id="modCreateur" maxlength="60" placeholder="Pseudo de la personne qui l'a fait" />
+                  </div>
+                  <div class="champ">
+                    <label for="modLien">Page officielle du mod (facultatif)</label>
+                    <input id="modLien" type="url" placeholder="https://…" />
+                  </div>
+                  <div class="champ">
+                    <label for="modCategorie">Catégorie</label>
+                    <select id="modCategorie"></select>
+                  </div>
+                  <label class="interrupteur"><input type="checkbox" id="modAccord" /><span></span><b>J'ai créé ce mod, ou son créateur m'a donné son accord pour le partager ici.</b></label>
+                  <button class="btn btn--petit" type="submit" id="modEnvoyer">Envoyer le mod</button>
+                </form>
+                <p class="astuce" id="modIndispo" hidden></p>
+                <div class="mes-mods" id="mesMods"></div>
+              </details>
+
               <p class="mods__etat" id="atEtat"></p>
-              <p class="astuce atelier__alerte">L'eau n'apparaît pas dans l'aperçu. Les serveurs en « pure mode » refusent les mods du dossier mods, et certains règlements les interdisent.</p>
+              <p class="astuce atelier__alerte">Les mods n'apparaissent pas dans l'aperçu. Les serveurs en « pure mode » refusent les mods du dossier mods, et certains règlements les interdisent.</p>
             </fieldset>
           </div>
         </div>

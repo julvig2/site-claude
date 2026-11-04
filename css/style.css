@@ -996,3 +996,24 @@ select:focus, .champ input:focus { outline: none; border-color: var(--vert); }
 .mods__perso { display: grid; gap: 14px; }
 .mods__resume { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--menthe); color: var(--vert); font-size: 0.88rem; font-weight: 500; }
 #atSource { font-size: 0.92rem; }
+
+/* ---------- Mods du jeu : choix multiple et envoi ---------- */
+.mods__ajout { display: flex; gap: 8px; }
+.mods__ajout select { flex: 1; min-width: 0; }
+.mods__choisis { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.mods__choisis:empty { display: none; }
+.mods__chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 6px 5px 12px; border-radius: 999px; background: var(--vert); color: #fff; font-size: 0.85rem; }
+.mods__chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mods__chip button { flex: none; width: 22px; height: 22px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.2); color: #fff; font-size: 0.95rem; line-height: 1; cursor: pointer; }
+.mods__chip button:hover { background: rgba(255, 255, 255, 0.35); }
+.mods__alerte { margin: 0; padding: 8px 12px; border-radius: 10px; background: #fde3e1; color: #8a1c12; font-size: 0.85rem; }
+.mods__section { border: 1px solid var(--ligne); border-radius: 12px; padding: 12px 14px; background: var(--fond); }
+.mods__section > summary { cursor: pointer; font-weight: 600; color: var(--vert); font-size: 0.92rem; }
+.mods__section[open] > summary { margin-bottom: 12px; }
+.envoi-mod { display: grid; gap: 12px; }
+.envoi-mod input, .envoi-mod select { background: #fff; }
+.mes-mods { display: grid; gap: 6px; margin-top: 12px; }
+.mes-mods:empty { display: none; }
+.mes-mods__titre { margin: 0; font-weight: 600; font-size: 0.88rem; }
+.mes-mods__ligne { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 10px; background: #fff; border: 1px solid var(--ligne); font-size: 0.85rem; }
+.mes-mods__ligne span { min-width: 0; overflow-wrap: anywhere; }

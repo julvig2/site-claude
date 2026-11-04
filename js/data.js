@@ -106,6 +106,18 @@ const AMBIANCES_CVC = [
   { id: "rouge", nom: "Rouge", apercu: ["#ff8a7a", "#4a0d14"], reglages: { highlightColor: "#ff8a7a", highlightStrength: 0.45, midColor: "#ffb3a8", midStrength: 0.15, shadowColor: "#4a0d14", shadowStrength: 0.4, temperature: 0.15 } },
 ];
 
+/* Catégories des mods du jeu (dossier mods de FiveM). */
+const CATEGORIES_MODS = [
+  { id: "eau", nom: "Eau" },
+  { id: "ciel", nom: "Ciel et lumière" },
+  { id: "effets", nom: "Effets (fumée, particules)" },
+  { id: "personnages", nom: "Personnages et animations" },
+  { id: "sons", nom: "Sons" },
+  { id: "textures", nom: "Textures" },
+  { id: "modeles", nom: "Modèles 3D" },
+  { id: "autre", nom: "Autre" },
+];
+
 /* Pack son : armes GTA courantes (ou le nom d'une arme ajoutée par le serveur). */
 const ARMES = [
   { id: "WEAPON_PISTOL", nom: "Pistolet" },

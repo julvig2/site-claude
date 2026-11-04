@@ -22,6 +22,7 @@ const Communaute = (() => {
   const toast = (m) => window.ForgeUI && window.ForgeUI.toast(m);
 
   let db = null;
+  let fichiersSite = null; // capacité "assets" : hébergement des mods envoyés par les membres
   let uid = null;
   let proprio = false;
   let partage = false;
@@ -50,8 +51,9 @@ const Communaute = (() => {
     const c = window.claude;
     if (c && typeof c.use === "function") {
       try {
-        const [d, u] = await Promise.all([c.use("db"), c.use("user")]);
+        const [d, u, a] = await Promise.all([c.use("db"), c.use("user"), c.use("assets")]);
         db = d;
+        fichiersSite = a;
         if (u) {
           uid = await u.id();
           proprio = await u.isOwner();
@@ -318,31 +320,97 @@ const Communaute = (() => {
     return s.exists ? s.data().wav : null;
   }
 
-  /* ---------- Mods du jeu publiés avec les packs réalistes ---------- */
-  /** Mods que ce visiteur peut utiliser : packs gratuits, achetés ou à lui. */
+  /* ---------- Mods du jeu : envoyés par les membres + mods d'eau des packs ---------- */
+  const TAILLE_MAX_MOD = 15 * 1024 * 1024; // le .rpf est stocké encodé en texte (limite de 20 Mo)
+  const CIBLE_EAU = "common.rpf:data/levels/gta5/water.xml";
+
+  /** Tous les mods que ce visiteur peut utiliser. */
   function modsDisponibles() {
-    return tousLesPacks()
+    const liste = [];
+    if (partage) {
+      membres.forEach((m, id) => Object.values(m.mods || {}).forEach((x) => liste.push({
+        ...x, source: "site", vendeurId: id, auteur: x.createur || m.pseudo || "Anonyme",
+        resume: [x.chiffre ? "contenu protégé" : x.cibles && x.cibles.length ? `remplace ${[...new Set(x.cibles.map((c) => c.split("/").pop()))].slice(0, 3).join(", ")}` : ""].filter(Boolean),
+      })));
+    }
+    tousLesPacks()
       .filter((p) => p.mod && ["libre", "achete"].includes(etatAchat(p)))
-      .map((p) => ({ id: p.id, vendeurId: p.vendeurId, nom: p.nom, auteur: p.auteur || "Anonyme", resume: p.mod.resume || [] }));
+      .forEach((p) => liste.push({
+        id: p.id, source: "pack", vendeurId: p.vendeurId, nom: p.nom, auteur: p.auteur || "Anonyme",
+        categorie: "eau", cibles: [CIBLE_EAU], resume: p.mod.resume || [],
+      }));
+    return liste.sort((a, b) => (b.creeLe || 0) - (a.creeLe || 0));
   }
 
-  /** Récupère le .rpf d'un mod publié. */
+  /** Récupère le .rpf d'un mod. */
   async function chargerMod(m) {
     let b64 = null;
-    if (partage) {
+    if (m.source === "site") {
+      const r = await fetch("/_blob/" + m.asset);
+      if (!r.ok) throw new Error(`le mod « ${m.nom} » n'est pas accessible`);
+      b64 = (await r.text()).trim();
+    } else if (partage) {
       const s = await db.doc(`fichiers/${m.vendeurId}/mods/${m.id}`).get();
       b64 = s.exists ? s.data().rpf : null;
     } else {
       const p = packsLocaux.find((x) => x.id === m.id);
       b64 = p && p.modBase64;
     }
-    if (!b64) throw new Error("mod introuvable");
+    if (!b64) throw new Error(`le mod « ${m.nom || ""} » est introuvable`);
     return SonPack.depuisBase64(b64);
+  }
+
+  const peutEnvoyerMod = () => Boolean(partage && fichiersSite && uid && !lectureSeule);
+  const mesMods = () => (partage && uid ? Object.values(monMembre().mods || {}) : []);
+
+  /**
+   * Envoie un mod .rpf sur le site.
+   * @param {File} fichier
+   * @param {{ nom, createur, lien, categorie, chiffre, cibles, fichiers }} infos
+   */
+  async function envoyerMod(fichier, infos) {
+    if (!peutEnvoyerMod()) throw new Error("l'envoi de mods n'est pas disponible pour ton accès");
+    if (fichier.size > TAILLE_MAX_MOD) throw new Error("le mod dépasse 15 Mo");
+    const octets = new Uint8Array(await fichier.arrayBuffer());
+    const b64 = SonPack.versBase64(octets);
+    const envoi = await fichiersSite.upload(new Blob([b64], { type: "text/plain" }), { type: "text/plain" });
+    const id = "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    try {
+      await ecrireMembre((m) => {
+        m.mods = m.mods || {};
+        m.mods[id] = {
+          id, asset: envoi.id, nom: infos.nom.slice(0, 60), createur: infos.createur.slice(0, 60),
+          lien: infos.lien || "", categorie: infos.categorie, taille: fichier.size,
+          chiffre: Boolean(infos.chiffre), cibles: (infos.cibles || []).slice(0, 40),
+          creeLe: Date.now(),
+        };
+      });
+    } catch (e) {
+      await fichiersSite.delete(envoi.id).catch(() => {});
+      throw e;
+    }
+    afficher();
+    return id;
+  }
+
+  async function supprimerMod(m) {
+    try {
+      if (m.vendeurId === uid) {
+        await ecrireMembre((doc) => { delete doc.mods[m.id]; });
+      } else if (proprio) {
+        const autre = copie(membres.get(m.vendeurId) || {});
+        if (autre.mods) delete autre.mods[m.id];
+        await db.doc("membres/" + m.vendeurId).set(autre);
+      } else return;
+      if (fichiersSite) await fichiersSite.delete(m.asset).catch(() => {});
+      afficher();
+      toast(`Mod « ${m.nom} » supprimé`);
+    } catch (e) { toast("Suppression impossible pour le moment."); }
   }
 
   let signatureMods = "";
   function signalerMods() {
-    const sig = modsDisponibles().map((m) => m.id).join(",");
+    const sig = modsDisponibles().map((m) => m.id).join(",") + "|" + peutEnvoyerMod() + "|" + proprio;
     if (sig === signatureMods) return;
     signatureMods = sig;
     document.dispatchEvent(new Event("mods-maj"));
@@ -463,9 +531,23 @@ const Communaute = (() => {
         if (!b64) throw new Error("son introuvable");
         await SonPack.telecharger({ ...p.son, nom: p.nom, auteur: p.auteur, wav: SonPack.depuisBase64(b64) });
       } else {
-        const meta = { nom: p.nom, auteur: p.auteur, scene: p.scene, mode: p.mode };
-        if (p.mod) meta.mod = { rpf: await chargerMod({ id: p.id, vendeurId: p.vendeurId }), resume: p.mod.resume || [] };
+        const meta = { nom: p.nom, auteur: p.auteur, scene: p.scene, mode: p.mode, mods: [] };
+        if (p.mod) {
+          meta.mods.push({ fichier: `${Exporteur.slug(p.nom)}_eau.rpf`, rpf: await chargerMod({ id: p.id, vendeurId: p.vendeurId, source: "pack" }), resume: p.mod.resume || [] });
+        }
+        // mods hébergés référencés par le pack (ignorés s'ils ont été supprimés depuis)
+        const manquants = [];
+        for (const ref of p.modsSite || []) {
+          const m = (membres.get(ref.vendeurId) || {}).mods?.[ref.id];
+          if (!m) { manquants.push(ref.id); continue; }
+          meta.mods.push({
+            fichier: `${Exporteur.slug(m.nom)}.rpf`,
+            rpf: await chargerMod({ ...m, source: "site" }),
+            resume: [`« ${m.nom} » par ${m.createur}${m.lien ? ` (${m.lien})` : ""}`],
+          });
+        }
         await Exporteur.telecharger(p.reglages, meta);
+        if (manquants.length) toast(`${manquants.length} mod(s) de ce pack ont été retirés du site et ne sont pas inclus.`);
       }
       await noterTelechargement(p);
       toast(`« ${p.nom} » téléchargé ✔`);
@@ -839,5 +921,9 @@ const Communaute = (() => {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", demarrer);
   else demarrer();
 
-  return { publier, lireVente, modsDisponibles, chargerMod };
+  return {
+    publier, lireVente, modsDisponibles, chargerMod,
+    envoyerMod, supprimerMod, mesMods, peutEnvoyerMod,
+    estProprio: () => proprio, monId: () => uid, TAILLE_MAX_MOD,
+  };
 })();

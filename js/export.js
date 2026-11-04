@@ -287,23 +287,25 @@ ${serveur}
     const racine = zip.folder(id);
 
     let texte = lisezmoi({ nom, auteur }, s, id);
-    if (meta.mod) {
-      // Mod du jeu (.rpf pour le dossier mods de FiveM)
-      racine.folder("mods").file(`${id}.rpf`, meta.mod.rpf);
+    // Mods du jeu (.rpf pour le dossier mods de FiveM)
+    const mods = meta.mods || (meta.mod ? [{ fichier: `${id}.rpf`, rpf: meta.mod.rpf, resume: meta.mod.resume }] : []);
+    if (mods.length) {
+      const dossier = racine.folder("mods");
+      mods.forEach((m) => dossier.file(m.fichier, m.rpf));
       texte += `
 --------------------------------------------------------------
- MOD DU JEU : dossier mods
+ MODS DU JEU : dossier mods (${mods.length})
 --------------------------------------------------------------
- ${meta.mod.resume.join("\n ")}
+${mods.map((m) => ` - mods/${m.fichier}\n   ${m.resume.join("\n   ")}`).join("\n")}
 
- 1) Copiez "mods/${id}.rpf" dans le dossier "FiveM.app/mods"
+ 1) Copiez les fichiers .rpf du dossier "mods" dans "FiveM.app/mods"
     (créez le dossier "mods" s'il n'existe pas).
  2) Relancez FiveM.
- Pour le retirer : supprimez "${id}.rpf" du dossier mods.
+ Pour retirer un mod : supprimez son .rpf du dossier mods.
 
  Les serveurs en « pure mode » refusent les mods du dossier mods,
  et certains règlements les interdisent : vérifiez avant de jouer.
- Ce mod a été fabriqué à partir de VOTRE fichier water.xml.
+ Les mods restent la propriété de leurs créateurs.
 `;
     }
     racine.file("LISEZMOI.txt", texte);

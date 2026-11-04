@@ -573,19 +573,26 @@
         scene,
         mode,
       };
-      // Pack réaliste : le mod .rpf (eau) est ajouté au pack s'il est réglé
+      // Pack réaliste : les mods .rpf choisis (et le mod d'eau perso) vont dans le dossier mods
+      let mods = null;
       if (mode === "realiste" && typeof Atelier !== "undefined" && Atelier.actif()) {
-        meta.mod = await Atelier.construireMod(meta.nom, meta.auteur);
+        mods = await Atelier.construireMods(meta.nom, meta.auteur);
+        meta.mods = mods.tous;
       }
       const f = await Exporteur.telecharger(reglages(), meta);
       let msg = `${f} téléchargé ✔`;
       if ($("#publierPack").checked && typeof Communaute !== "undefined") {
-        // Le mod n'est publié avec le pack que s'il vient du fichier du joueur (pas le mod d'un autre membre)
-        const modPerso = meta.mod && typeof Atelier !== "undefined" && Atelier.estPerso() ? meta.mod : null;
+        // Publié avec le pack : le mod d'eau perso (fichier joint) et les références des mods hébergés.
+        // Le mod d'eau repris d'un autre pack n'est pas republié.
+        const perso = mods && mods.perso;
         const ok = await Communaute.publier(
-          { type: "graphique", mode, nom: meta.nom, auteur: meta.auteur, scene, reglages: copie(reglages()), prix: vente.prix, lien: vente.lien, mod: modPerso ? { type: "eau", resume: modPerso.resume } : undefined },
+          {
+            type: "graphique", mode, nom: meta.nom, auteur: meta.auteur, scene, reglages: copie(reglages()), prix: vente.prix, lien: vente.lien,
+            mod: perso ? { type: "eau", resume: perso.resume } : undefined,
+            modsSite: mods && mods.refsSite.length ? mods.refsSite : undefined,
+          },
           null,
-          modPerso ? SonPack.versBase64(modPerso.rpf) : null
+          perso ? SonPack.versBase64(perso.rpf) : null
         );
         if (ok) msg += vente.prix ? ` · en vente à ${vente.prix.toFixed(2).replace(".", ",")} €` : " · publié dans les derniers packs";
       }

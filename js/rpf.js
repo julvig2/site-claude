@@ -109,5 +109,67 @@ const Rpf = (() => {
     return sortie;
   }
 
-  return { creer };
+  async function inflateBrut(octets) {
+    if (typeof DecompressionStream === "undefined") return null;
+    try {
+      const flux = new Blob([octets]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      return new Uint8Array(await new Response(flux).arrayBuffer());
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * Lit une archive RPF7 : liste des fichiers et cibles de son assembly.xml.
+   * @param {Uint8Array} d
+   * @returns {Promise<{ chiffre: boolean, fichiers: string[], cibles: string[], nomAssembly: string }>}
+   */
+  async function lire(d) {
+    const v = new DataView(d.buffer, d.byteOffset, d.byteLength);
+    if (d.length < 16 || v.getUint32(0, true) !== MAGIE) throw new Error("ce fichier n'est pas un .rpf de GTA V");
+    const nb = v.getUint32(4, true), lgNoms = v.getUint32(8, true), chiffrement = v.getUint32(12, true);
+    if (chiffrement !== OPEN && chiffrement !== 0) return { chiffre: true, fichiers: [], cibles: [], nomAssembly: "" };
+    const dec = new TextDecoder("latin1");
+    const baseNoms = 16 + nb * 16;
+    const nom = (o) => { let f = baseNoms + o; while (f < d.length && d[f] !== 0) f++; return dec.decode(d.subarray(baseNoms + o, f)); };
+    const E = [];
+    for (let i = 0; i < nb; i++) {
+      const o = 16 + i * 16;
+      if (v.getUint32(o + 4, true) === DOSSIER) {
+        E.push({ dossier: true, nom: nom(v.getUint32(o, true)), debut: v.getUint32(o + 8, true), compte: v.getUint32(o + 12, true) });
+      } else {
+        const taille = d[o + 2] | (d[o + 3] << 8) | (d[o + 4] << 16);
+        const bloc = (d[o + 5] | (d[o + 6] << 8) | (d[o + 7] << 16)) & 0x7fffff;
+        const ressource = (v.getUint32(o + 4, true) & 0x80000000) !== 0;
+        E.push({ dossier: false, nom: nom(v.getUint16(o, true)), taille, bloc, ressource, tailleDec: v.getUint32(o + 8, true) });
+      }
+    }
+    const fichiers = [];
+    const parcourir = (i, chemin) => {
+      const e = E[i];
+      if (!e) return;
+      if (e.dossier) { for (let j = e.debut; j < e.debut + e.compte && j < E.length; j++) parcourir(j, chemin ? `${chemin}/${E[j].nom}` : E[j].nom); }
+      else fichiers.push(chemin);
+    };
+    parcourir(0, "");
+    // Cibles déclarées dans l'assembly.xml à la racine (format des mods FiveM)
+    let cibles = [], nomAssembly = "";
+    const racine = E[0];
+    const idx = racine && racine.dossier ? E.slice(racine.debut, racine.debut + racine.compte).findIndex((e) => !e.dossier && e.nom.toLowerCase() === "assembly.xml") : -1;
+    if (idx >= 0) {
+      const e = E[racine.debut + idx];
+      const brut = d.subarray(e.bloc * BLOC, e.bloc * BLOC + (e.taille || e.tailleDec));
+      const texte = new TextDecoder("utf-8").decode((e.taille ? await inflateBrut(brut) : brut) || new Uint8Array());
+      const m = texte.match(/<name>([^<]*)<\/name>/);
+      nomAssembly = m ? m[1].trim() : "";
+      for (const a of texte.matchAll(/<archive[^>]*path="([^"]+)"[^>]*>([\s\S]*?)<\/archive>/g)) {
+        for (const add of a[2].matchAll(/<add[^>]*>([^<]+)<\/add>/g)) {
+          cibles.push(`${a[1]}:${add[1]}`.replace(/\\/g, "/").replace(/\/+/g, "/").toLowerCase());
+        }
+      }
+    }
+    return { chiffre: false, fichiers, cibles, nomAssembly };
+  }
+
+  return { creer, lire };
 })();
